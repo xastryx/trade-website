@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" width="400" height="200">
+  <rect width="400" height="200" fill="transparent"/>
+  <style>
+    text {
+      font-family: 'Arial Black', Arial, sans-serif;
+      font-weight: 900;
+      font-size: 80px;
+      fill: white;
+      letter-spacing: 2px;
+    }
+  </style>
+  <text x="200" y="130" text-anchor="middle">TRADER</text>
+</svg>
