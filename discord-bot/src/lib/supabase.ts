@@ -25,3 +25,7 @@ export function createAdminClient() {
 export async function getItemsTable() {
   return supabase.from("items")
 }
+
+export function deprecatedSupabaseWarning() {
+  console.warn("⚠️  Supabase is no longer used. Please use Neon database functions from lib/database.ts")
+}

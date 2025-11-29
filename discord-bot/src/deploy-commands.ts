@@ -9,6 +9,27 @@ import { excelUpdateCommand } from "./commands/excel-update.js"
 
 dotenv.config()
 
+if (!process.env.DISCORD_BOT_TOKEN) {
+  console.error("❌ Error: DISCORD_BOT_TOKEN is not set!")
+  console.error("📝 Please create a .env file in the discord-bot folder with:")
+  console.error("   DISCORD_BOT_TOKEN=your_bot_token_here")
+  console.error("   DISCORD_CLIENT_ID=your_client_id_here")
+  console.error("   DISCORD_GUILD_ID=your_guild_id_here")
+  process.exit(1)
+}
+
+if (!process.env.DISCORD_CLIENT_ID) {
+  console.error("❌ Error: DISCORD_CLIENT_ID is not set!")
+  console.error("📝 Please add DISCORD_CLIENT_ID to your .env file")
+  process.exit(1)
+}
+
+if (!process.env.DISCORD_GUILD_ID) {
+  console.error("❌ Error: DISCORD_GUILD_ID is not set!")
+  console.error("📝 Please add DISCORD_GUILD_ID to your .env file")
+  process.exit(1)
+}
+
 const commands = [
   addItemCommand.data.toJSON(),
   editItemCommand.data.toJSON(),
@@ -18,13 +39,13 @@ const commands = [
   excelUpdateCommand.data.toJSON(),
 ]
 
-const rest = new REST().setToken(process.env.DISCORD_TOKEN!)
+const rest = new REST().setToken(process.env.DISCORD_BOT_TOKEN)
 ;(async () => {
   try {
     console.log(`🔄 Started refreshing ${commands.length} application (/) commands.`)
 
     const data = await rest.put(
-      Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID!, process.env.DISCORD_GUILD_ID!),
+      Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID, process.env.DISCORD_GUILD_ID),
       { body: commands },
     )
 

@@ -9,6 +9,20 @@ import { excelUpdateCommand } from "./commands/excel-update.js"
 
 dotenv.config()
 
+if (!process.env.DISCORD_BOT_TOKEN) {
+  console.error("❌ Error: DISCORD_BOT_TOKEN is not set!")
+  console.error("📝 Please create a .env file in the discord-bot folder with:")
+  console.error("   DISCORD_BOT_TOKEN=your_bot_token_here")
+  console.error("   DISCORD_CLIENT_ID=your_client_id_here")
+  process.exit(1)
+}
+
+if (!process.env.DISCORD_CLIENT_ID) {
+  console.error("❌ Error: DISCORD_CLIENT_ID is not set!")
+  console.error("📝 Please add DISCORD_CLIENT_ID to your .env file")
+  process.exit(1)
+}
+
 const commands = [
   addItemCommand.data.toJSON(),
   editItemCommand.data.toJSON(),
@@ -18,17 +32,13 @@ const commands = [
   excelUpdateCommand.data.toJSON(),
 ]
 
-const rest = new REST().setToken(process.env.DISCORD_TOKEN!)
-
+const rest = new REST().setToken(process.env.DISCORD_BOT_TOKEN)
 ;(async () => {
   try {
     console.log(`🔄 Started refreshing ${commands.length} global application (/) commands.`)
     console.log(`⚠️  Note: Global commands can take up to 1 hour to update across all servers.`)
 
-    const data = await rest.put(
-      Routes.applicationCommands(process.env.DISCORD_CLIENT_ID!),
-      { body: commands },
-    )
+    const data = await rest.put(Routes.applicationCommands(process.env.DISCORD_CLIENT_ID), { body: commands })
 
     console.log(`✅ Successfully reloaded ${(data as any).length} global application (/) commands.`)
     console.log(`⏳ Commands will be available globally within 1 hour.`)

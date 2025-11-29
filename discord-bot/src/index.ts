@@ -108,10 +108,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 })
 
-const token = process.env.DISCORD_TOKEN
+const token = process.env.DISCORD_BOT_TOKEN
 
 if (!token) {
-  console.error("❌ DISCORD_TOKEN is not set in environment variables!")
+  console.error("❌ DISCORD_BOT_TOKEN is not set in environment variables!")
   console.error("Please create a .env file with your bot token")
   process.exit(1)
 }

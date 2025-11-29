@@ -161,61 +161,75 @@ async function handleUpload(interaction: ChatInputCommandInteraction) {
       await interaction.editReply(statusMessage + "\nProcessing updates...")
     }
 
-    // Process updates
     const results = {
+      inserted: 0,
       updated: 0,
-      notFound: 0,
       failed: 0,
       errors: [] as string[],
     }
 
     for (const item of items) {
       try {
-        const existingItems = await sql`
-          SELECT id, name 
-          FROM items 
-          WHERE game = 'Adopt Me' 
-          AND LOWER(name) = LOWER(${item.name})
-          LIMIT 1
-        `
-
-        if (!existingItems || existingItems.length === 0) {
-          results.notFound++
-          results.errors.push(`Item not found: "${item.name}"`)
-          continue
-        }
-
-        const existingItem = existingItems[0]
-
         if (!dryRun) {
-          const updateData: any = { updated_at: new Date() }
+          // Build the item data
+          const itemData: any = {
+            name: item.name,
+            game: "Adopt Me",
+            section: item.section || "Pets",
+            value: item.value || 0,
+            rap_value: item.rap_value || 0,
+            neon_value: item.neon_value || 0,
+            mega_value: item.mega_value || 0,
+            demand: item.demand || null,
+            rarity: item.rarity || null,
+            image_url: item.image_url || null,
+            updated_at: new Date(),
+            created_at: new Date(),
+          }
 
+          // Add all optional fields from the Excel
           for (const key in item) {
-            if (key !== "name") {
-              updateData[key] = item[key as keyof typeof item]
+            if (key !== "name" && !itemData.hasOwnProperty(key)) {
+              itemData[key] = item[key as keyof typeof item]
             }
           }
 
-          const setFields = []
-          const values: any[] = []
+          // Use UPSERT - insert if not exists, update if exists
+          const columns = Object.keys(itemData)
+          const placeholders = columns.map((_, i) => `$${i + 1}`)
+          const values = columns.map((col) => itemData[col])
 
-          for (const [key, value] of Object.entries(updateData)) {
-            setFields.push(`${key} = $${setFields.length + 1}`)
-            values.push(value)
-          }
+          // Build the UPDATE clause for conflict resolution (exclude created_at)
+          const updateColumns = columns.filter((col) => col !== "created_at" && col !== "name" && col !== "game")
+          const updateClause = updateColumns.map((col) => `${col} = EXCLUDED.${col}`).join(", ")
 
-          // Use raw SQL with proper parameter binding
           await sql(
-            [`UPDATE items SET ${setFields.join(", ")} WHERE id = $${values.length + 1}`] as any,
+            [
+              `
+              INSERT INTO items (${columns.join(", ")})
+              VALUES (${placeholders.join(", ")})
+              ON CONFLICT (name, game) 
+              DO UPDATE SET ${updateClause}
+              RETURNING (xmax = 0) as inserted
+            `,
+            ] as any,
             ...values,
-            existingItem.id,
           )
         }
 
-        results.updated++
+        // Check if item exists to determine insert vs update for dry run
+        const existingItems = await sql`
+          SELECT id FROM items WHERE game = 'Adopt Me' AND LOWER(name) = LOWER(${item.name}) LIMIT 1
+        `
+
+        if (existingItems.length > 0) {
+          results.updated++
+        } else {
+          results.inserted++
+        }
       } catch (error: any) {
         results.failed++
-        results.errors.push(`Failed to update "${item.name}": ${error.message}`)
+        results.errors.push(`Failed to process "${item.name}": ${error.message}`)
       }
     }
 
@@ -226,11 +240,12 @@ async function handleUpload(interaction: ChatInputCommandInteraction) {
 
     let description = ""
     if (dryRun) {
-      description += `**Would update:** ${results.updated} items\n`
+      description += `**Would insert:** ${results.inserted} new items\n`
+      description += `**Would update:** ${results.updated} existing items\n`
     } else {
-      description += `**Successfully updated:** ${results.updated} items\n`
+      description += `**Inserted:** ${results.inserted} new items\n`
+      description += `**Updated:** ${results.updated} existing items\n`
     }
-    description += `**Not found:** ${results.notFound} items\n`
     description += `**Failed:** ${results.failed} items\n`
 
     if (results.errors.length > 0) {
@@ -240,11 +255,11 @@ async function handleUpload(interaction: ChatInputCommandInteraction) {
       }
     }
 
-    if (!dryRun && results.updated > 0) {
+    if (!dryRun && (results.inserted > 0 || results.updated > 0)) {
       description += `\n\n💡 Changes are now live on the website!`
     }
 
-    if (dryRun && results.updated > 0) {
+    if (dryRun && (results.inserted > 0 || results.updated > 0)) {
       description += `\n\n💡 Run without dry-run to apply these changes.`
     }
 
