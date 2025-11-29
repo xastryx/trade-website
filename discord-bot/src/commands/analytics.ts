@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from "discord.js"
+import { SlashCommandBuilder, type ChatInputCommandInteraction, EmbedBuilder } from "discord.js"
 import type { BotCommand } from "../lib/types.js"
 import { sql } from "../lib/database.js"
 import { generateAsciiChart } from "../lib/chart-generator.js"
@@ -33,55 +33,67 @@ export const analyticsCommand: BotCommand = {
         ),
     )
     .addBooleanOption((option) =>
-      option
-        .setName("charts")
-        .setDescription("Include visual charts in the response")
-        .setRequired(false),
+      option.setName("charts").setDescription("Include visual charts in the response").setRequired(false),
     ),
 
   async execute(interaction: ChatInputCommandInteraction) {
     await interaction.deferReply()
 
     const timeframe = (interaction.options.getString("timeframe") || "7d") as "24h" | "7d" | "30d" | "all"
-    const type = (interaction.options.getString("type") || "overview") as "overview" | "users" | "trades" | "pageviews" | "activity"
+    const type = (interaction.options.getString("type") || "overview") as
+      | "overview"
+      | "users"
+      | "trades"
+      | "pageviews"
+      | "activity"
     const includeCharts = interaction.options.getBoolean("charts") || false
 
     try {
-      let timeCondition = ""
+      const hours = timeframe === "24h" ? 24 : timeframe === "7d" ? 168 : timeframe === "30d" ? 720 : null
       let timeLabel = "Last 7 Days"
 
       switch (timeframe) {
         case "24h":
-          timeCondition = "WHERE created_at >= NOW() - INTERVAL '24 hours'"
           timeLabel = "Last 24 Hours"
           break
         case "7d":
-          timeCondition = "WHERE created_at >= NOW() - INTERVAL '7 days'"
           timeLabel = "Last 7 Days"
           break
         case "30d":
-          timeCondition = "WHERE created_at >= NOW() - INTERVAL '30 days'"
           timeLabel = "Last 30 Days"
           break
         case "all":
-          timeCondition = ""
           timeLabel = "All Time"
           break
       }
 
       // OVERVIEW
       if (type === "overview") {
-        const [totalUsers, totalTrades, totalItems, activeUsers, totalPageViews, totalActivities] = await Promise.all([
+        const [totalUsers, totalTrades, totalItems] = await Promise.all([
           sql`SELECT COUNT(*) as count FROM profiles`,
           sql`SELECT COUNT(*) as count FROM trades`,
           sql`SELECT COUNT(*) as count FROM items`,
-          sql`SELECT COUNT(DISTINCT discord_id) as count FROM activities ${sql.unsafe(timeCondition)}`,
-          sql`SELECT COUNT(*) as count FROM activities WHERE type = 'page_view' ${sql.unsafe(timeCondition.replace('WHERE', 'AND'))}`,
-          sql`SELECT COUNT(*) as count FROM activities ${sql.unsafe(timeCondition)}`,
         ])
 
-        const newUsers = await sql`SELECT COUNT(*) as count FROM profiles ${sql.unsafe(timeCondition)}`
-        const newTrades = await sql`SELECT COUNT(*) as count FROM trades ${sql.unsafe(timeCondition)}`
+        const activeUsers = hours
+          ? await sql`SELECT COUNT(DISTINCT discord_id) as count FROM activities WHERE created_at >= NOW() - INTERVAL '1 hour' * ${hours}`
+          : await sql`SELECT COUNT(DISTINCT discord_id) as count FROM activities`
+
+        const totalPageViews = hours
+          ? await sql`SELECT COUNT(*) as count FROM activities WHERE type = 'page_view' AND created_at >= NOW() - INTERVAL '1 hour' * ${hours}`
+          : await sql`SELECT COUNT(*) as count FROM activities WHERE type = 'page_view'`
+
+        const totalActivities = hours
+          ? await sql`SELECT COUNT(*) as count FROM activities WHERE created_at >= NOW() - INTERVAL '1 hour' * ${hours}`
+          : await sql`SELECT COUNT(*) as count FROM activities`
+
+        const newUsers = hours
+          ? await sql`SELECT COUNT(*) as count FROM profiles WHERE created_at >= NOW() - INTERVAL '1 hour' * ${hours}`
+          : await sql`SELECT COUNT(*) as count FROM profiles`
+
+        const newTrades = hours
+          ? await sql`SELECT COUNT(*) as count FROM trades WHERE created_at >= NOW() - INTERVAL '1 hour' * ${hours}`
+          : await sql`SELECT COUNT(*) as count FROM trades`
 
         const embed = new EmbedBuilder()
           .setTitle(`📈 Website Analytics Overview`)
@@ -106,72 +118,90 @@ export const analyticsCommand: BotCommand = {
 
       // USERS
       if (type === "users") {
-        const [totalUsers, activeUsers, newUsers] = await Promise.all([
-          sql`SELECT COUNT(*) as count FROM profiles`,
-          sql`SELECT COUNT(DISTINCT discord_id) as count FROM activities ${sql.unsafe(timeCondition)}`,
-          sql`SELECT COUNT(*) as count FROM profiles ${sql.unsafe(timeCondition)}`,
-        ])
+        const [totalUsers] = await Promise.all([sql`SELECT COUNT(*) as count FROM profiles`])
 
-        const recentLogins = await sql`SELECT COUNT(*) as count FROM activities WHERE type = 'login' ${sql.unsafe(timeCondition.replace('WHERE', 'AND'))}`
-        
-        // Get top 5 most active users
-        const topUsers = await sql`
-          SELECT 
-            p.username,
-            p.global_name,
-            COUNT(*) as activity_count
-          FROM activities a
-          JOIN profiles p ON a.discord_id = p.discord_id
-          ${sql.unsafe(timeCondition)}
-          GROUP BY p.discord_id, p.username, p.global_name
-          ORDER BY activity_count DESC
-          LIMIT 5
-        `
+        const activeUsers = hours
+          ? await sql`SELECT COUNT(DISTINCT discord_id) as count FROM activities WHERE created_at >= NOW() - INTERVAL '1 hour' * ${hours}`
+          : await sql`SELECT COUNT(DISTINCT discord_id) as count FROM activities`
 
-        // Get daily signups for chart
-        const dailySignups = await sql`
-          SELECT 
-            DATE(created_at) as date,
-            COUNT(*) as count
-          FROM profiles
-          ${sql.unsafe(timeCondition)}
-          GROUP BY DATE(created_at)
-          ORDER BY date DESC
-          LIMIT 7
-        `
+        const newUsers = hours
+          ? await sql`SELECT COUNT(*) as count FROM profiles WHERE created_at >= NOW() - INTERVAL '1 hour' * ${hours}`
+          : await sql`SELECT COUNT(*) as count FROM profiles`
 
-        let topUsersText = topUsers.map((u, i) => 
-          `${i + 1}. **${u.global_name || u.username}** - ${u.activity_count} activities`
-        ).join('\n') || 'No activity yet'
+        const recentLogins = hours
+          ? await sql`SELECT COUNT(*) as count FROM activities WHERE type = 'login' AND created_at >= NOW() - INTERVAL '1 hour' * ${hours}`
+          : await sql`SELECT COUNT(*) as count FROM activities WHERE type = 'login'`
+
+        const topUsers = hours
+          ? await sql`
+              SELECT 
+                p.username,
+                p.global_name,
+                COUNT(*) as activity_count
+              FROM activities a
+              JOIN profiles p ON a.discord_id = p.discord_id
+              WHERE a.created_at >= NOW() - INTERVAL '1 hour' * ${hours}
+              GROUP BY p.discord_id, p.username, p.global_name
+              ORDER BY activity_count DESC
+              LIMIT 5
+            `
+          : await sql`
+              SELECT 
+                p.username,
+                p.global_name,
+                COUNT(*) as activity_count
+              FROM activities a
+              JOIN profiles p ON a.discord_id = p.discord_id
+              GROUP BY p.discord_id, p.username, p.global_name
+              ORDER BY activity_count DESC
+              LIMIT 5
+            `
+
+        const dailySignups = hours
+          ? await sql`
+              SELECT 
+                DATE(created_at) as date,
+                COUNT(*) as count
+              FROM profiles
+              WHERE created_at >= NOW() - INTERVAL '1 hour' * ${hours}
+              GROUP BY DATE(created_at)
+              ORDER BY date DESC
+              LIMIT 7
+            `
+          : await sql`
+              SELECT 
+                DATE(created_at) as date,
+                COUNT(*) as count
+              FROM profiles
+              GROUP BY DATE(created_at)
+              ORDER BY date DESC
+              LIMIT 7
+            `
+
+        const topUsersText =
+          topUsers
+            .map((u, i) => `${i + 1}. **${u.global_name || u.username}** - ${u.activity_count} activities`)
+            .join("\n") || "No activity yet"
 
         const embed = new EmbedBuilder()
           .setTitle(`👥 User Analytics - ${timeLabel}`)
           .setColor(0x57f287)
           .addFields(
-            { name: "📊 Statistics", value: `Total Users: **${totalUsers[0].count}**\nActive Users: **${activeUsers[0].count}**\nNew Users: **${newUsers[0].count}**\nTotal Logins: **${recentLogins[0].count}**`, inline: false },
+            {
+              name: "📊 Statistics",
+              value: `Total Users: **${totalUsers[0].count}**\nActive Users: **${activeUsers[0].count}**\nNew Users: **${newUsers[0].count}**\nTotal Logins: **${recentLogins[0].count}**`,
+              inline: false,
+            },
             { name: "🏆 Most Active Users", value: topUsersText, inline: false },
           )
           .setTimestamp()
 
-        if (includeCharts && dailySignups.length > 0) {
-          const chartData = {
-            labels: dailySignups.reverse().map(d => new Date(d.date).toLocaleDateString()),
-            datasets: [{
-              label: 'New Users',
-              data: dailySignups.map(d => Number(d.count)),
-              backgroundColor: 'rgba(87, 242, 135, 0.5)',
-              borderColor: 'rgba(87, 242, 135, 1)',
-            }],
-          }
-          const chartText = generateAsciiChart(chartData.labels, chartData.datasets[0].data, 'New User Signups')
-          embed.addFields({ name: "📈 Daily Signups Chart", value: chartText, inline: false })
-        } else {
-          // ASCII chart
-          const chartData = dailySignups.reverse().map(d => Number(d.count))
-          const labels = dailySignups.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))
-          if (chartData.length > 0) {
-            embed.addFields({ name: "📈 Daily Signups", value: generateAsciiChart(labels, chartData), inline: false })
-          }
+        const chartData = dailySignups.reverse().map((d) => Number(d.count))
+        const labels = dailySignups.map((d) =>
+          new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        )
+        if (chartData.length > 0) {
+          embed.addFields({ name: "📈 Daily Signups", value: generateAsciiChart(labels, chartData), inline: false })
         }
 
         await interaction.editReply({ embeds: [embed] })
@@ -180,68 +210,83 @@ export const analyticsCommand: BotCommand = {
 
       // TRADES
       if (type === "trades") {
-        const [totalTrades, activeTrades, completedTrades, cancelledTrades] = await Promise.all([
-          sql`SELECT COUNT(*) as count FROM trades ${sql.unsafe(timeCondition)}`,
-          sql`SELECT COUNT(*) as count FROM trades WHERE status = 'active' ${sql.unsafe(timeCondition.replace('WHERE', 'AND'))}`,
-          sql`SELECT COUNT(*) as count FROM trades WHERE status = 'completed' ${sql.unsafe(timeCondition.replace('WHERE', 'AND'))}`,
-          sql`SELECT COUNT(*) as count FROM trades WHERE status = 'cancelled' ${sql.unsafe(timeCondition.replace('WHERE', 'AND'))}`,
-        ])
+        const totalTrades = hours
+          ? await sql`SELECT COUNT(*) as count FROM trades WHERE created_at >= NOW() - INTERVAL '1 hour' * ${hours}`
+          : await sql`SELECT COUNT(*) as count FROM trades`
 
-        // Get trades by game
-        const tradesByGame = await sql`
-          SELECT 
-            game,
-            COUNT(*) as count
-          FROM trades
-          ${sql.unsafe(timeCondition)}
-          GROUP BY game
-          ORDER BY count DESC
-        `
+        const activeTrades = hours
+          ? await sql`SELECT COUNT(*) as count FROM trades WHERE status = 'active' AND created_at >= NOW() - INTERVAL '1 hour' * ${hours}`
+          : await sql`SELECT COUNT(*) as count FROM trades WHERE status = 'active'`
 
-        // Get daily trade creation
-        const dailyTrades = await sql`
-          SELECT 
-            DATE(created_at) as date,
-            COUNT(*) as count
-          FROM trades
-          ${sql.unsafe(timeCondition)}
-          GROUP BY DATE(created_at)
-          ORDER BY date DESC
-          LIMIT 7
-        `
+        const completedTrades = hours
+          ? await sql`SELECT COUNT(*) as count FROM trades WHERE status = 'completed' AND created_at >= NOW() - INTERVAL '1 hour' * ${hours}`
+          : await sql`SELECT COUNT(*) as count FROM trades WHERE status = 'completed'`
 
-        let gameBreakdown = tradesByGame.map(g => 
-          `**${g.game}**: ${g.count} trades`
-        ).join('\n') || 'No trades yet'
+        const cancelledTrades = hours
+          ? await sql`SELECT COUNT(*) as count FROM trades WHERE status = 'cancelled' AND created_at >= NOW() - INTERVAL '1 hour' * ${hours}`
+          : await sql`SELECT COUNT(*) as count FROM trades WHERE status = 'cancelled'`
+
+        const tradesByGame = hours
+          ? await sql`
+              SELECT 
+                game,
+                COUNT(*) as count
+              FROM trades
+              WHERE created_at >= NOW() - INTERVAL '1 hour' * ${hours}
+              GROUP BY game
+              ORDER BY count DESC
+            `
+          : await sql`
+              SELECT 
+                game,
+                COUNT(*) as count
+              FROM trades
+              GROUP BY game
+              ORDER BY count DESC
+            `
+
+        const dailyTrades = hours
+          ? await sql`
+              SELECT 
+                DATE(created_at) as date,
+                COUNT(*) as count
+              FROM trades
+              WHERE created_at >= NOW() - INTERVAL '1 hour' * ${hours}
+              GROUP BY DATE(created_at)
+              ORDER BY date DESC
+              LIMIT 7
+            `
+          : await sql`
+              SELECT 
+                DATE(created_at) as date,
+                COUNT(*) as count
+              FROM trades
+              GROUP BY DATE(created_at)
+              ORDER BY date DESC
+              LIMIT 7
+            `
+
+        const gameBreakdown = tradesByGame.map((g) => `**${g.game}**: ${g.count} trades`).join("\n") || "No trades yet"
 
         const embed = new EmbedBuilder()
           .setTitle(`🔄 Trade Analytics - ${timeLabel}`)
           .setColor(0xfee75c)
           .addFields(
-            { name: "📊 Trade Statistics", value: `Total Trades: **${totalTrades[0].count}**\nActive: **${activeTrades[0].count}**\nCompleted: **${completedTrades[0].count}**\nCancelled: **${cancelledTrades[0].count}**`, inline: false },
+            {
+              name: "📊 Trade Statistics",
+              value: `Total Trades: **${totalTrades[0].count}**\nActive: **${activeTrades[0].count}**\nCompleted: **${completedTrades[0].count}**\nCancelled: **${cancelledTrades[0].count}**`,
+              inline: false,
+            },
             { name: "🎮 Trades by Game", value: gameBreakdown, inline: false },
           )
           .setTimestamp()
 
-        if (includeCharts && dailyTrades.length > 0) {
-          const chartData = {
-            labels: dailyTrades.reverse().map(d => new Date(d.date).toLocaleDateString()),
-            datasets: [{
-              label: 'New Trades',
-              data: dailyTrades.map(d => Number(d.count)),
-              backgroundColor: 'rgba(254, 231, 92, 0.5)',
-              borderColor: 'rgba(254, 231, 92, 1)',
-            }],
-          }
-          const chartText = generateAsciiChart(chartData.labels, chartData.datasets[0].data, 'Daily Trade Creation')
-          embed.addFields({ name: "📈 Daily Trades Chart", value: chartText, inline: false })
-        } else {
-          // ASCII chart
-          const chartData = dailyTrades.reverse().map(d => Number(d.count))
-          const labels = dailyTrades.map(d => new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))
-          if (chartData.length > 0) {
-            embed.addFields({ name: "📈 Daily Trades", value: generateAsciiChart(labels, chartData), inline: false })
-          }
+        const chartData = dailyTrades.reverse().map((d) => Number(d.count))
+        const labels = dailyTrades.map((d) =>
+          new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        )
+        if (chartData.length > 0) {
+          embed.addFields({ name: "📈 Daily Trades", value: generateAsciiChart(labels, chartData), inline: false })
         }
 
         await interaction.editReply({ embeds: [embed] })
@@ -250,75 +295,99 @@ export const analyticsCommand: BotCommand = {
 
       // PAGE VIEWS
       if (type === "pageviews") {
-        const [totalPageViews, uniqueVisitors, topPages, dailyPageViews] = await Promise.all([
-          sql`
-            SELECT COUNT(*) as count 
-            FROM activities 
-            WHERE type = 'page_view' 
-            ${sql.unsafe(timeCondition.replace('WHERE', 'AND'))}
-          `,
-          sql`
-            SELECT COUNT(DISTINCT discord_id) as count 
-            FROM activities 
-            WHERE type = 'page_view' 
-            ${sql.unsafe(timeCondition.replace('WHERE', 'AND'))}
-          `,
-          sql`
-            SELECT 
-              meta->>'page' as page,
-              COUNT(*) as views
-            FROM activities
-            WHERE type = 'page_view' 
-            ${sql.unsafe(timeCondition.replace('WHERE', 'AND'))}
-            AND meta->>'page' IS NOT NULL
-            GROUP BY meta->>'page'
-            ORDER BY views DESC
-            LIMIT 10
-          `,
-          sql`
-            SELECT 
-              DATE(created_at) as date,
-              COUNT(*) as count
-            FROM activities
-            WHERE type = 'page_view'
-            ${sql.unsafe(timeCondition.replace('WHERE', 'AND'))}
-            GROUP BY DATE(created_at)
-            ORDER BY date DESC
-            LIMIT 7
-          `
-        ])
+        const totalPageViews = hours
+          ? await sql`SELECT COUNT(*) as count FROM activities WHERE type = 'page_view' AND created_at >= NOW() - INTERVAL '1 hour' * ${hours}`
+          : await sql`SELECT COUNT(*) as count FROM activities WHERE type = 'page_view'`
+
+        const uniqueVisitors = hours
+          ? await sql`SELECT COUNT(DISTINCT discord_id) as count FROM activities WHERE type = 'page_view' AND created_at >= NOW() - INTERVAL '1 hour' * ${hours}`
+          : await sql`SELECT COUNT(DISTINCT discord_id) as count FROM activities WHERE type = 'page_view'`
+
+        const topPages = hours
+          ? await sql`
+              SELECT 
+                meta->>'page' as page,
+                COUNT(*) as views
+              FROM activities
+              WHERE type = 'page_view' 
+              AND meta->>'page' IS NOT NULL
+              AND created_at >= NOW() - INTERVAL '1 hour' * ${hours}
+              GROUP BY meta->>'page'
+              ORDER BY views DESC
+              LIMIT 10
+            `
+          : await sql`
+              SELECT 
+                meta->>'page' as page,
+                COUNT(*) as views
+              FROM activities
+              WHERE type = 'page_view'
+              AND meta->>'page' IS NOT NULL
+              GROUP BY meta->>'page'
+              ORDER BY views DESC
+              LIMIT 10
+            `
+
+        const dailyPageViews = hours
+          ? await sql`
+              SELECT 
+                DATE(created_at) as date,
+                COUNT(*) as count
+              FROM activities
+              WHERE type = 'page_view'
+              AND created_at >= NOW() - INTERVAL '1 hour' * ${hours}
+              GROUP BY DATE(created_at)
+              ORDER BY date DESC
+              LIMIT 7
+            `
+          : await sql`
+              SELECT 
+                DATE(created_at) as date,
+                COUNT(*) as count
+              FROM activities
+              WHERE type = 'page_view'
+              GROUP BY DATE(created_at)
+              ORDER BY date DESC
+              LIMIT 7
+            `
 
         const getPageName = (path: string): string => {
           const pageNames: Record<string, string> = {
-            '/': 'Home',
-            '/calculator': 'Calculator',
-            '/trading': 'Trade Ads',
-            '/messages': 'Messages',
-            '/about': 'About',
-            '/login': 'Login',
-            '/profile': 'Profile',
-            '/values': 'Our Values',
+            "/": "Home",
+            "/calculator": "Calculator",
+            "/trading": "Trade Ads",
+            "/messages": "Messages",
+            "/about": "About",
+            "/login": "Login",
+            "/profile": "Profile",
+            "/values": "Our Values",
           }
           return pageNames[path] || path
         }
 
-        let topPagesText = topPages.map((p, i) => 
-          `${i + 1}. ${getPageName(p.page)} - ${p.views} views`
-        ).join('\n') || 'No page views tracked yet'
+        const topPagesText =
+          topPages.map((p, i) => `${i + 1}. ${getPageName(p.page)} - ${p.views} views`).join("\n") ||
+          "No page views tracked yet"
 
         const embed = new EmbedBuilder()
           .setTitle(`👁️ Page View Analytics - ${timeLabel}`)
           .setColor(0xeb459e)
           .addFields(
-            { name: "📊 View Statistics", value: `Total Page Views: **${totalPageViews[0].count}**\nUnique Visitors: **${uniqueVisitors[0].count}**\nAvg Views/Visitor: **${Math.round(Number(totalPageViews[0].count) / Number(uniqueVisitors[0].count) || 0)}**`, inline: false },
+            {
+              name: "📊 View Statistics",
+              value: `Total Page Views: **${totalPageViews[0].count}**\nUnique Visitors: **${uniqueVisitors[0].count}**\nAvg Views/Visitor: **${Math.round(Number(totalPageViews[0].count) / Number(uniqueVisitors[0].count) || 0)}**`,
+              inline: false,
+            },
             { name: "🔥 Most Visited Pages", value: topPagesText, inline: false },
           )
           .setTimestamp()
 
         if (dailyPageViews.length > 0) {
-          const chartData = dailyPageViews.reverse().map(d => Number(d.count))
-          const labels = dailyPageViews.map(d => new Date(d.date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }))
-          const chartText = generateAsciiChart(labels, chartData, 'Daily Page Views')
+          const chartData = dailyPageViews.reverse().map((d) => Number(d.count))
+          const labels = dailyPageViews.map((d) =>
+            new Date(d.date).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit" }),
+          )
+          const chartText = generateAsciiChart(labels, chartData, "Daily Page Views")
           embed.addFields({ name: "📈 Daily Page Views Chart", value: chartText, inline: false })
         }
 
@@ -328,27 +397,33 @@ export const analyticsCommand: BotCommand = {
 
       // ACTIVITY
       if (type === "activity") {
-        const totalActivities = await sql`
-          SELECT COUNT(*) as count 
-          FROM activities 
-          ${sql.unsafe(timeCondition)}
-        `
+        const totalActivities = hours
+          ? await sql`SELECT COUNT(*) as count FROM activities WHERE created_at >= NOW() - INTERVAL '1 hour' * ${hours}`
+          : await sql`SELECT COUNT(*) as count FROM activities`
 
-        // Activity breakdown by type
-        const activityTypes = await sql`
-          SELECT 
-            type,
-            COUNT(*) as count
-          FROM activities
-          ${sql.unsafe(timeCondition)}
-          GROUP BY type
-          ORDER BY count DESC
-          LIMIT 10
-        `
+        const activityTypes = hours
+          ? await sql`
+              SELECT 
+                type,
+                COUNT(*) as count
+              FROM activities
+              WHERE created_at >= NOW() - INTERVAL '1 hour' * ${hours}
+              GROUP BY type
+              ORDER BY count DESC
+              LIMIT 10
+            `
+          : await sql`
+              SELECT 
+                type,
+                COUNT(*) as count
+              FROM activities
+              GROUP BY type
+              ORDER BY count DESC
+              LIMIT 10
+            `
 
-        // Hourly activity distribution (for 24h timeframe)
         let hourlyActivity = null
-        if (timeframe === '24h') {
+        if (timeframe === "24h") {
           hourlyActivity = await sql`
             SELECT 
               EXTRACT(HOUR FROM created_at) as hour,
@@ -360,9 +435,8 @@ export const analyticsCommand: BotCommand = {
           `
         }
 
-        let activityBreakdown = activityTypes.map((a, i) => 
-          `${i + 1}. **${a.type}**: ${a.count} events`
-        ).join('\n') || 'No activity yet'
+        const activityBreakdown =
+          activityTypes.map((a, i) => `${i + 1}. **${a.type}**: ${a.count} events`).join("\n") || "No activity yet"
 
         const embed = new EmbedBuilder()
           .setTitle(`⚡ Activity Analytics - ${timeLabel}`)
@@ -374,19 +448,22 @@ export const analyticsCommand: BotCommand = {
           .setTimestamp()
 
         if (hourlyActivity && hourlyActivity.length > 0) {
-          const chartData = hourlyActivity.map(h => Number(h.count))
-          const labels = hourlyActivity.map(h => `${h.hour}:00`)
-          embed.addFields({ name: "⏰ Hourly Distribution (24h)", value: generateAsciiChart(labels, chartData), inline: false })
+          const chartData = hourlyActivity.map((h) => Number(h.count))
+          const labels = hourlyActivity.map((h) => `${h.hour}:00`)
+          embed.addFields({
+            name: "⏰ Hourly Distribution (24h)",
+            value: generateAsciiChart(labels, chartData),
+            inline: false,
+          })
         }
 
         await interaction.editReply({ embeds: [embed] })
         return
       }
-
     } catch (error) {
       console.error("Analytics command error:", error)
       await interaction.editReply({
-        content: `❌ Failed to fetch analytics data: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        content: `❌ Failed to fetch analytics data: ${error instanceof Error ? error.message : "Unknown error"}`,
       })
     }
   },

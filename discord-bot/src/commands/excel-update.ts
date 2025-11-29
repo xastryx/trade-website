@@ -188,31 +188,21 @@ async function handleUpload(interaction: ChatInputCommandInteraction) {
         const existingItem = existingItems[0]
 
         if (!dryRun) {
-          const updateFields: string[] = []
-          const updateValues: any[] = []
-          let paramIndex = 1
+          const updateData: any = { updated_at: new Date() }
 
           for (const key in item) {
             if (key !== "name") {
-              updateFields.push(`${key} = $${paramIndex}`)
-              updateValues.push(item[key as keyof typeof item])
-              paramIndex++
+              updateData[key] = item[key as keyof typeof item]
             }
           }
 
-          // Add timestamps
-          const now = new Date().toISOString()
-          updateFields.push(`updated_at = $${paramIndex}`)
-          updateValues.push(now)
-          paramIndex++
-          updateFields.push(`last_updated_at = $${paramIndex}`)
-          updateValues.push(now)
-          paramIndex++
+          // Dynamically build the SET clause
+          const setEntries = Object.keys(updateData)
+          const setClause = setEntries.map((key, idx) => `${key} = $${idx + 1}`).join(", ")
+          const values = setEntries.map((key) => updateData[key])
+          values.push(existingItem.id) // For WHERE clause
 
-          // Add item ID for WHERE clause
-          updateValues.push(existingItem.id)
-
-          await sql.query(`UPDATE items SET ${updateFields.join(", ")} WHERE id = $${paramIndex}`, updateValues)
+          await sql.query(`UPDATE items SET ${setClause} WHERE id = $${values.length}`, values)
         }
 
         results.updated++

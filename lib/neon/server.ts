@@ -1,16 +1,20 @@
 import { Pool, neonConfig } from "@neondatabase/serverless"
 import ws from "ws"
+import { neon } from "@neondatabase/serverless"
 
 neonConfig.webSocketConstructor = ws
 
 let pool: Pool | null = null
 
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL environment variable is not set")
+}
+
+export const sql = neon(process.env.DATABASE_URL)
+
 export function getServerPool() {
   if (!pool) {
-    if (!process.env.NEON_DATABASE_URL) {
-      throw new Error("NEON_DATABASE_URL environment variable is not set")
-    }
-    pool = new Pool({ connectionString: process.env.NEON_DATABASE_URL })
+    pool = new Pool({ connectionString: process.env.DATABASE_URL })
   }
   return pool
 }
