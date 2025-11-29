@@ -12,7 +12,6 @@
     "db:check": "tsx scripts/check-database-items.ts",
     "db:check-images": "tsx scripts/check-image-urls.ts",
     "db:fix-images": "tsx scripts/fix-placeholder-images.ts",
-    "db:migrate": "tsx scripts/migrate-mongodb-to-postgres.ts",
     "db:setup-neon": "tsx scripts/setup-neon-database.ts",
     "deploy-commands": "tsx bot/deploy-commands.ts",
     "dev": "next dev",

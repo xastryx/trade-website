@@ -1,21 +1,7 @@
-import { createClient } from '@supabase/supabase-js'
-
 export function createServiceClient() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!url || !key) {
-    throw new Error("Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env vars.")
-  }
-
-  return createClient(url, key, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  })
+  throw new Error("Supabase has been removed. Use Neon database functions from lib/neon/server.ts instead.")
 }
 
 export function getServiceClient() {
-  return createServiceClient()
+  throw new Error("Supabase has been removed. Use Neon database functions from lib/neon/server.ts instead.")
 }

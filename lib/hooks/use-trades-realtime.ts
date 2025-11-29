@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import { createBrowserClient } from "@supabase/ssr"
 
 interface Trade {
   id: string
@@ -19,34 +18,24 @@ export function useTradesRealtime(userId?: string) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const fetchingRef = useRef(false)
-  const channelRef = useRef<any>(null)
+  const intervalRef = useRef<NodeJS.Timeout>()
 
   useEffect(() => {
-    if (fetchingRef.current) return
-
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    )
-
-    const fetchInitialTrades = async () => {
+    const fetchTrades = async () => {
       if (fetchingRef.current) return
       fetchingRef.current = true
 
       try {
-        setLoading(true)
+        if (loading) setLoading(true)
         setError(null)
 
-        let query = supabase.from("trades").select("*").eq("status", "active")
+        const url = userId ? `/api/trades?userId=${userId}` : "/api/trades"
+        const response = await fetch(url)
 
-        if (userId) {
-          query = query.eq("discord_id", userId)
-        }
+        if (!response.ok) throw new Error("Failed to fetch trades")
 
-        const { data, error: err } = await query.order("created_at", { ascending: false })
-
-        if (err) throw err
-        setTrades(data || [])
+        const data = await response.json()
+        setTrades(data.trades || [])
       } catch (err) {
         console.error("Error fetching trades:", err)
         setError(err instanceof Error ? err.message : "Failed to load trades")
@@ -56,43 +45,15 @@ export function useTradesRealtime(userId?: string) {
       }
     }
 
-    fetchInitialTrades()
+    // Initial fetch
+    fetchTrades()
 
-    if (channelRef.current) {
-      return
-    }
-
-    // Subscribe to real-time updates
-    const channel = supabase
-      .channel("trades-realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "trades",
-        },
-        (payload) => {
-          if (payload.eventType === "INSERT") {
-            setTrades((prev) => {
-              if (prev.some((t) => t.id === payload.new.id)) return prev
-              return [payload.new as Trade, ...prev]
-            })
-          } else if (payload.eventType === "UPDATE") {
-            setTrades((prev) => prev.map((t) => (t.id === payload.new.id ? (payload.new as Trade) : t)))
-          } else if (payload.eventType === "DELETE") {
-            setTrades((prev) => prev.filter((t) => t.id !== payload.old.id))
-          }
-        },
-      )
-      .subscribe()
-
-    channelRef.current = channel
+    // Poll every 5 seconds for updates
+    intervalRef.current = setInterval(fetchTrades, 5000)
 
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current)
-        channelRef.current = null
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
       }
       fetchingRef.current = false
     }

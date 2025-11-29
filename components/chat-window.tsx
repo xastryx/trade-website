@@ -3,7 +3,6 @@
 import type React from "react"
 
 import { useEffect, useState, useRef, useCallback } from "react"
-import { createClient } from "@/lib/supabase/client"
 import Image from "next/image"
 import { formatDistanceToNow } from "date-fns"
 import { ArrowLeft, Send, Loader2, Check, CheckCheck, WifiOff, Wifi, X } from "lucide-react"
@@ -71,11 +70,9 @@ export function ChatWindow({
   const [loadingMore, setLoadingMore] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
-  const supabase = createClient()
   const typingTimeoutRef = useRef<NodeJS.Timeout>()
   const lastTypingTimeRef = useRef<number>(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const channelRef = useRef<any>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editContent, setEditContent] = useState("")
   const [deleteMessageId, setDeleteMessageId] = useState<string | null>(null)
@@ -83,6 +80,7 @@ export function ChatWindow({
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null)
   const fetchingRef = useRef(false)
   const markingReadRef = useRef(false)
+  const pollingRef = useRef<NodeJS.Timeout>()
 
   const displayName = conversation.otherUser.global_name || conversation.otherUser.username || "Unknown User"
   const avatarUrl = conversation.otherUser.avatar_url || "/placeholder.svg?height=40&width=40"
@@ -93,97 +91,16 @@ export function ChatWindow({
   }, [])
 
   useEffect(() => {
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current)
-      channelRef.current = null
-    }
-
     fetchMessages()
     markMessagesAsRead()
 
-    console.log("Setting up realtime subscription for conversation:", conversation.id)
-
-    const channel = supabase
-      .channel(`conversation:${conversation.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${conversation.id}`,
-        },
-        (payload) => {
-          console.log("Received new message via realtime:", payload.new)
-          const newMsg = payload.new as Message
-          setMessages((prev) => {
-            // Remove optimistic message if it exists
-            const filtered = prev.filter((m) => m.tempId !== newMsg.id)
-            // Prevent duplicates
-            if (filtered.some((m) => m.id === newMsg.id)) return filtered
-            return [...filtered, { ...newMsg, status: "delivered" }]
-          })
-
-          if (newMsg.sender_id !== currentUserId) {
-            audioRef.current?.play().catch(() => {})
-            markMessagesAsRead()
-          }
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${conversation.id}`,
-        },
-        (payload) => {
-          console.log("Message updated via realtime:", payload.new)
-          const updatedMsg = payload.new as Message
-          setMessages((prev) =>
-            prev.map((m) => {
-              if (m.id === updatedMsg.id) {
-                return { ...updatedMsg, status: updatedMsg.is_read ? "read" : "delivered" }
-              }
-              return m
-            }),
-          )
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${conversation.id}`,
-        },
-        (payload) => {
-          console.log("Message deleted via realtime:", payload.old)
-          setMessages((prev) => prev.filter((m) => m.id !== payload.old.id))
-        },
-      )
-      .on("broadcast", { event: "typing" }, ({ payload }) => {
-        console.log("Typing indicator received:", payload)
-        if (payload.userId !== currentUserId) {
-          setIsTyping(true)
-          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
-          typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 3000)
-        }
-      })
-      .subscribe((status) => {
-        console.log("Realtime subscription status:", status)
-        setIsConnected(status === "SUBSCRIBED")
-      })
-
-    channelRef.current = channel
+    pollingRef.current = setInterval(() => {
+      fetchMessages(true)
+    }, 2000)
 
     return () => {
-      console.log("Cleaning up realtime subscription")
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current)
-        channelRef.current = null
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
       }
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current)
@@ -206,29 +123,36 @@ export function ChatWindow({
     }
   }, [loadingMore, hasMore])
 
-  async function fetchMessages() {
+  async function fetchMessages(silent = false) {
     if (fetchingRef.current) return
     fetchingRef.current = true
 
+    if (!silent) setLoading(true)
+
     try {
-      const { data, error } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("conversation_id", conversation.id)
-        .order("created_at", { ascending: false })
-        .limit(50)
+      const response = await fetch(`/api/messages/${conversation.id}?limit=50`)
+      const data = await response.json()
 
-      if (error) throw error
+      if (!response.ok) throw new Error(data.error)
 
-      const messagesWithStatus = (data || []).reverse().map((msg) => ({
+      const messagesWithStatus = (data.messages || []).map((msg: any) => ({
         ...msg,
         status: msg.is_read ? "read" : msg.sender_id === currentUserId ? "delivered" : undefined,
       }))
 
+      if (silent && messagesWithStatus.length > messages.length) {
+        const newMsgs = messagesWithStatus.filter((msg: Message) => !messages.find((m) => m.id === msg.id))
+        if (newMsgs.some((msg: Message) => msg.sender_id !== currentUserId)) {
+          audioRef.current?.play().catch(() => {})
+          markMessagesAsRead()
+        }
+      }
+
       setMessages(messagesWithStatus)
-      setHasMore((data || []).length === 50)
+      setHasMore(data.hasMore)
     } catch (error) {
       console.error("Error fetching messages:", error)
+      setIsConnected(false)
     } finally {
       setLoading(false)
       fetchingRef.current = false
@@ -241,23 +165,18 @@ export function ChatWindow({
     setLoadingMore(true)
     try {
       const oldestMessage = messages[0]
-      const { data, error } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("conversation_id", conversation.id)
-        .lt("created_at", oldestMessage.created_at)
-        .order("created_at", { ascending: false })
-        .limit(50)
+      const response = await fetch(`/api/messages/${conversation.id}?limit=50&before=${oldestMessage.created_at}`)
+      const data = await response.json()
 
-      if (error) throw error
+      if (!response.ok) throw new Error(data.error)
 
-      if (data && data.length > 0) {
-        const messagesWithStatus = data.reverse().map((msg) => ({
+      if (data.messages && data.messages.length > 0) {
+        const messagesWithStatus = data.messages.map((msg: any) => ({
           ...msg,
           status: msg.is_read ? "read" : msg.sender_id === currentUserId ? "delivered" : undefined,
         }))
         setMessages((prev) => [...messagesWithStatus, ...prev])
-        setHasMore(data.length === 50)
+        setHasMore(data.hasMore)
       } else {
         setHasMore(false)
       }
@@ -273,12 +192,11 @@ export function ChatWindow({
     markingReadRef.current = true
 
     try {
-      await supabase
-        .from("messages")
-        .update({ is_read: true })
-        .eq("conversation_id", conversation.id)
-        .eq("is_read", false)
-        .neq("sender_id", currentUserId)
+      await fetch(`/api/messages/${conversation.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "mark_read", user_id: currentUserId }),
+      })
     } catch (error) {
       console.error("Error marking messages as read:", error)
     } finally {
@@ -286,17 +204,7 @@ export function ChatWindow({
     }
   }
 
-  function handleTyping() {
-    const now = Date.now()
-    if (now - lastTypingTimeRef.current > 2000) {
-      channelRef.current?.send({
-        type: "broadcast",
-        event: "typing",
-        payload: { userId: currentUserId },
-      })
-      lastTypingTimeRef.current = now
-    }
-  }
+  function handleTyping() {}
 
   const handleEditMessage = async (messageId: string) => {
     if (!editContent.trim() || sending) return
@@ -304,33 +212,26 @@ export function ChatWindow({
     setSending(true)
 
     try {
-      const moderationResponse = await fetch("/api/moderate", {
-        method: "POST",
+      const response = await fetch(`/api/messages/${conversation.id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: editContent.trim() }),
+        body: JSON.stringify({
+          message_id: messageId,
+          action: "edit",
+          content: editContent.trim(),
+        }),
       })
 
-      if (!moderationResponse.ok) {
-        const error = await moderationResponse.json()
-        alert(error.reason || "Your message contains inappropriate content.")
-        setSending(false)
-        return
-      }
+      const data = await response.json()
 
-      const { error } = await supabase
-        .from("messages")
-        .update({
-          content: editContent.trim(),
-          edited_at: new Date().toISOString(),
-        })
-        .eq("id", messageId)
+      if (!response.ok) throw new Error(data.error)
 
-      if (error) throw error
-
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? data.message : m)))
       setEditingMessageId(null)
       setEditContent("")
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error editing message:", error)
+      alert(error.message || "Failed to edit message")
     } finally {
       setSending(false)
     }
@@ -341,16 +242,20 @@ export function ChatWindow({
     setSending(true)
 
     try {
-      const { error } = await supabase
-        .from("messages")
-        .update({
-          deleted_at: new Date().toISOString(),
-          content: "This message was deleted",
-        })
-        .eq("id", messageId)
+      const response = await fetch(`/api/messages/${conversation.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message_id: messageId,
+          action: "delete",
+        }),
+      })
 
-      if (error) throw error
+      const data = await response.json()
 
+      if (!response.ok) throw new Error(data.error)
+
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? data.message : m)))
       setDeleteMessageId(null)
     } catch (error) {
       console.error("Error deleting message:", error)
@@ -363,49 +268,27 @@ export function ChatWindow({
     if (sending) return
     setSending(true)
 
-    console.log("Adding reaction:", { messageId, emoji, currentUserId })
     try {
-      const message = messages.find((m) => m.id === messageId)
-      if (!message) {
-        console.log("Message not found for reaction")
-        return
-      }
+      const response = await fetch(`/api/messages/${conversation.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message_id: messageId,
+          action: "reaction",
+          emoji,
+          user_id: currentUserId,
+        }),
+      })
 
-      const reactions = message.reactions || []
-      const existingReaction = reactions.find((r) => r.emoji === emoji)
+      const data = await response.json()
 
-      let updatedReactions: Reaction[]
-      if (existingReaction) {
-        if (existingReaction.users.includes(currentUserId)) {
-          // Remove reaction
-          updatedReactions = reactions
-            .map((r) => (r.emoji === emoji ? { ...r, users: r.users.filter((u) => u !== currentUserId) } : r))
-            .filter((r) => r.users.length > 0)
-        } else {
-          // Add user to reaction
-          updatedReactions = reactions.map((r) =>
-            r.emoji === emoji ? { ...r, users: [...r.users, currentUserId] } : r,
-          )
-        }
-      } else {
-        // New reaction
-        updatedReactions = [...reactions, { emoji, users: [currentUserId] }]
-      }
+      if (!response.ok) throw new Error(data.error)
 
-      console.log("Updating reactions:", updatedReactions)
-
-      const { error } = await supabase.from("messages").update({ reactions: updatedReactions }).eq("id", messageId)
-
-      if (error) {
-        console.error("Supabase error updating reactions:", error)
-        throw error
-      }
-
-      console.log("Reaction updated successfully")
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? data.message : m)))
       setShowEmojiPicker(null)
     } catch (error) {
       console.error("Error adding reaction:", error)
-      alert("Failed to add reaction. Make sure you've run the SQL script 011_add_message_features.sql")
+      alert("Failed to add reaction")
     } finally {
       setSending(false)
     }
@@ -427,25 +310,6 @@ export function ChatWindow({
 
     setSending(true)
 
-    try {
-      const moderationResponse = await fetch("/api/moderate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: newMessage.trim() }),
-      })
-
-      if (!moderationResponse.ok) {
-        const error = await moderationResponse.json()
-        alert(error.reason || "Your message contains inappropriate content.")
-        setSending(false)
-        return
-      }
-    } catch (error) {
-      console.error("Error checking message:", error)
-      setSending(false)
-      return
-    }
-
     const tempId = `temp-${Date.now()}`
     const messageContent = newMessage.trim()
 
@@ -464,33 +328,26 @@ export function ChatWindow({
     setMessages((prev) => [...prev, optimisticMessage])
     setNewMessage("")
     setReplyToMessage(null)
-    setSending(true)
 
     try {
-      const [messageResult] = await Promise.all([
-        supabase
-          .from("messages")
-          .insert({
-            conversation_id: conversation.id,
-            sender_id: currentUserId,
-            content: messageContent,
-            reply_to: replyToMessage?.id || null,
-          })
-          .select()
-          .single(),
-        supabase
-          .from("conversations")
-          .update({
-            last_message_at: new Date().toISOString(),
-          })
-          .eq("id", conversation.id),
-      ])
+      const response = await fetch(`/api/messages/${conversation.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sender_id: currentUserId,
+          content: messageContent,
+          reply_to: replyToMessage?.id || null,
+        }),
+      })
 
-      if (messageResult.error) throw messageResult.error
+      const data = await response.json()
 
-      setMessages((prev) => prev.map((m) => (m.tempId === tempId ? { ...messageResult.data, status: "sent" } : m)))
-    } catch (error) {
+      if (!response.ok) throw new Error(data.error)
+
+      setMessages((prev) => prev.map((m) => (m.tempId === tempId ? { ...data.message, status: "sent" } : m)))
+    } catch (error: any) {
       console.error("Error sending message:", error)
+      alert(error.message || "Failed to send message")
       setMessages((prev) => prev.map((m) => (m.tempId === tempId ? { ...m, status: "failed" } : m)))
     } finally {
       setSending(false)
@@ -503,19 +360,20 @@ export function ChatWindow({
     setMessages((prev) => prev.map((m) => (m.tempId === message.tempId ? { ...m, status: "sending" } : m)))
 
     try {
-      const { data, error } = await supabase
-        .from("messages")
-        .insert({
-          conversation_id: conversation.id,
+      const response = await fetch(`/api/messages/${conversation.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           sender_id: currentUserId,
           content: message.content,
-        })
-        .select()
-        .single()
+        }),
+      })
 
-      if (error) throw error
+      const data = await response.json()
 
-      setMessages((prev) => prev.map((m) => (m.tempId === message.tempId ? { ...data, status: "sent" } : m)))
+      if (!response.ok) throw new Error(data.error)
+
+      setMessages((prev) => prev.map((m) => (m.tempId === message.tempId ? { ...data.message, status: "sent" } : m)))
     } catch (error) {
       console.error("Error retrying message:", error)
       setMessages((prev) => prev.map((m) => (m.tempId === message.tempId ? { ...m, status: "failed" } : m)))
@@ -557,7 +415,7 @@ export function ChatWindow({
         </Button>
         <div className="relative">
           <Image
-            src={avatarUrl || "/placeholder.svg"}
+            src={avatarUrl || "/placeholder.svg?height=40&width=40"}
             alt={displayName}
             width={44}
             height={44}
@@ -643,7 +501,7 @@ export function ChatWindow({
                     <div
                       className={cn(
                         "text-xs px-3 py-1.5 mb-1 rounded-t-lg border-l-2 backdrop-blur-sm",
-                        isOwn ? "bg-primary/10 border-primary/50" : "bg-muted/50 border-muted-foreground/30",
+                        isOwn ? "bg-primary/10 border-primary/50" : "bg-card border border-border/50 rounded-bl-lg",
                       )}
                     >
                       <p className="text-muted-foreground text-[10px] md:text-xs font-medium mb-0.5">Replying to</p>
@@ -771,7 +629,6 @@ export function ChatWindow({
             value={newMessage}
             onChange={(e) => {
               setNewMessage(e.target.value)
-              handleTyping()
             }}
             placeholder="Type a message..."
             className="flex-1 rounded-full bg-background border-border/50 focus-visible:ring-primary/50 text-sm md:text-base"

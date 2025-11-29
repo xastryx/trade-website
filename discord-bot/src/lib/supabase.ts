@@ -1,4 +1,3 @@
-import { createClient } from "@supabase/supabase-js"
 import dotenv from "dotenv"
 
 dotenv.config()
@@ -12,12 +11,15 @@ if (!supabaseUrl || !supabaseKey) {
   throw new Error("Missing Supabase credentials")
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
+export const supabase = {
+  from: () => {
+    throw new Error("Supabase has been removed. Use Neon database functions from lib/database.ts instead.")
   },
-})
+}
+
+export function createAdminClient() {
+  throw new Error("Supabase has been removed. Use Neon database functions from lib/database.ts instead.")
+}
 
 // Helper function to get items table
 export async function getItemsTable() {

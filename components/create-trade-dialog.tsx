@@ -3,7 +3,6 @@
 import type React from "react"
 
 import { useState } from "react"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -46,23 +45,25 @@ export function CreateTradeDialog({
     setLoading(true)
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase.from("trade_requests").insert({
-        creator_id: currentUserId,
-        game: formData.game,
-        type: formData.type,
-        item_name: formData.item_name,
-        item_value: formData.item_value ? Number.parseFloat(formData.item_value) : null,
-        description: formData.description || null,
-        status: "active",
+      const response = await fetch("/api/trades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          creator_id: currentUserId,
+          game: formData.game,
+          type: formData.type,
+          item_name: formData.item_name,
+          item_value: formData.item_value ? Number.parseFloat(formData.item_value) : null,
+          description: formData.description || null,
+        }),
       })
 
-      if (error) throw error
+      if (!response.ok) throw new Error("Failed to create trade")
 
       onSuccess()
       onOpenChange(false)
       setFormData({
-        game: "Adopt Me", // Default to Adopt Me
+        game: "Adopt Me",
         type: "offer",
         item_name: "",
         item_value: "",
@@ -70,6 +71,7 @@ export function CreateTradeDialog({
       })
     } catch (error) {
       console.error("Error creating trade:", error)
+      alert("Failed to create trade. Please try again.")
     } finally {
       setLoading(false)
     }

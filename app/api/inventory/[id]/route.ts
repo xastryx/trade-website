@@ -1,7 +1,7 @@
-import { createServiceClient } from "@/lib/supabase/service"
 import { getSession } from "@/lib/auth/session"
+import { removeFromInventory } from "@/lib/db/inventory"
+import { createActivity } from "@/lib/db/activities"
 
-// DELETE - Remove item from inventory
 export async function DELETE(req: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params
   const session = await getSession()
@@ -10,20 +10,15 @@ export async function DELETE(req: Request, props: { params: Promise<{ id: string
   }
 
   const { id } = params
-  const supabase = await createServiceClient()
 
-  const { error } = await supabase.from("user_inventories").delete().eq("id", id).eq("discord_id", session.discordId)
+  try {
+    await removeFromInventory(id, session.discordId)
 
-  if (error) {
-    console.error("[v0] Error removing from inventory:", error)
+    await createActivity(session.discordId, "remove_inventory", { inventory_id: id })
+
+    return Response.json({ success: true })
+  } catch (error) {
+    console.error("Error removing from inventory:", error)
     return Response.json({ error: "Failed to remove from inventory" }, { status: 500 })
   }
-
-  await supabase.from("activities").insert({
-    discord_id: session.discordId,
-    type: "remove_inventory",
-    meta: { inventory_id: id },
-  })
-
-  return Response.json({ success: true })
 }

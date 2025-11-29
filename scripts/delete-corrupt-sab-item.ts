@@ -1,36 +1,40 @@
-import clientPromise from "../lib/mongodb"
+import { neon } from "@neondatabase/serverless"
 
 async function deleteCorruptItem() {
   try {
-    console.log("[v0] Connecting to MongoDB...")
-    const client = await clientPromise
-    const db = client.db("trading-db")
-    const collection = db.collection("items")
+    const sql = neon(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || "")
+
+    console.log("[v0] Connecting to Neon database...")
 
     // Find the corrupt item
-    const corruptItem = await collection.findOne({
-      game: "SAB",
-      name: "corrupt",
-    })
+    const corruptItems = await sql`
+      SELECT id, name, value, section 
+      FROM items 
+      WHERE game = 'SAB' AND name = 'corrupt'
+      LIMIT 1
+    `
 
-    if (!corruptItem) {
+    if (corruptItems.length === 0) {
       console.log("[v0] No item named 'corrupt' found in SAB game")
       return
     }
 
+    const corruptItem = corruptItems[0]
     console.log("[v0] Found corrupt item:", {
-      id: corruptItem._id.toString(),
+      id: corruptItem.id,
       name: corruptItem.name,
       value: corruptItem.value,
       section: corruptItem.section,
     })
 
     // Delete the item
-    const result = await collection.deleteOne({
-      _id: corruptItem._id,
-    })
+    const result = await sql`
+      DELETE FROM items 
+      WHERE id = ${corruptItem.id}
+      RETURNING id
+    `
 
-    if (result.deletedCount > 0) {
+    if (result.length > 0) {
       console.log("[v0] ✅ Successfully deleted corrupt item")
     } else {
       console.log("[v0] ❌ Failed to delete item")
