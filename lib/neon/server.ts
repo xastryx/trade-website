@@ -5,15 +5,32 @@ import { neon } from "@neondatabase/serverless"
 neonConfig.webSocketConstructor = ws
 
 let pool: Pool | null = null
+let _sql: ReturnType<typeof neon> | null = null
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is not set")
+function getSQL() {
+  if (!_sql) {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL environment variable is not set")
+    }
+    _sql = neon(process.env.DATABASE_URL)
+  }
+  return _sql
 }
 
-export const sql = neon(process.env.DATABASE_URL)
+export const sql = new Proxy({} as ReturnType<typeof neon>, {
+  apply(_target, _thisArg, args) {
+    return getSQL()(...args)
+  },
+  get(_target, prop) {
+    return (getSQL() as any)[prop]
+  },
+})
 
 export function getServerPool() {
   if (!pool) {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL environment variable is not set")
+    }
     pool = new Pool({ connectionString: process.env.DATABASE_URL })
   }
   return pool

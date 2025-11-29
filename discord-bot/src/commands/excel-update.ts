@@ -196,13 +196,20 @@ async function handleUpload(interaction: ChatInputCommandInteraction) {
             }
           }
 
-          // Dynamically build the SET clause
-          const setEntries = Object.keys(updateData)
-          const setClause = setEntries.map((key, idx) => `${key} = $${idx + 1}`).join(", ")
-          const values = setEntries.map((key) => updateData[key])
-          values.push(existingItem.id) // For WHERE clause
+          const setFields = []
+          const values: any[] = []
 
-          await sql.query(`UPDATE items SET ${setClause} WHERE id = $${values.length}`, values)
+          for (const [key, value] of Object.entries(updateData)) {
+            setFields.push(`${key} = $${setFields.length + 1}`)
+            values.push(value)
+          }
+
+          // Use raw SQL with proper parameter binding
+          await sql(
+            [`UPDATE items SET ${setFields.join(", ")} WHERE id = $${values.length + 1}`] as any,
+            ...values,
+            existingItem.id,
+          )
         }
 
         results.updated++

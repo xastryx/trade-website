@@ -15,6 +15,8 @@ export interface Item {
   mega_value?: number
   created_at?: Date
   updated_at?: Date
+  exist_count?: number
+  change_percent?: number
 }
 
 export async function getItems(game?: string): Promise<Item[]> {
@@ -92,13 +94,11 @@ export async function updateItem(id: string, updates: Partial<Item>): Promise<bo
   try {
     const setFields = []
     const values: any[] = []
-    let paramCount = 1
 
     for (const [key, value] of Object.entries(updates)) {
       if (key !== "id" && key !== "created_at") {
-        setFields.push(`${key} = $${paramCount}`)
+        setFields.push(`${key} = $${setFields.length + 1}`)
         values.push(value)
-        paramCount++
       }
     }
 
@@ -106,13 +106,10 @@ export async function updateItem(id: string, updates: Partial<Item>): Promise<bo
       return false
     }
 
-    setFields.push(`updated_at = $${paramCount}`)
+    setFields.push(`updated_at = $${setFields.length + 1}`)
     values.push(new Date())
-    paramCount++
 
-    values.push(id)
-
-    const result = await sql.query(`UPDATE items SET ${setFields.join(", ")} WHERE id = $${paramCount}`, values)
+    await sql([`UPDATE items SET ${setFields.join(", ")} WHERE id = $${values.length + 1}`] as any, ...values, id)
 
     return true
   } catch (error) {
