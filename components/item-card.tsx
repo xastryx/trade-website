@@ -248,9 +248,9 @@ export function ItemCard({ item, hideAddButton = false }: ItemCardProps) {
 
               <div className="absolute inset-0 flex items-center justify-center p-6">
                 <div className="relative w-full h-full">
-                  {isExternalImage && !imageError ? (
+                  {isExternalImage ? (
                     <img
-                      src={imageUrl || "/placeholder.svg"}
+                      src={imageError ? "/placeholder.svg?height=200&width=200" : imageUrl}
                       alt={item.name}
                       className="w-full h-full object-contain drop-shadow-2xl"
                       onError={() => setImageError(true)}
