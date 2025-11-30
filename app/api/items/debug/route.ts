@@ -5,14 +5,14 @@ import { query } from "@/lib/db/postgres"
 
 export async function GET() {
   try {
-    console.log("[v0] Testing Supabase connection...")
+    console.log("[v0] Testing Neon connection...")
     console.log("[v0] DATABASE_URL exists:", !!process.env.DATABASE_URL)
     console.log("[v0] POSTGRES_URL exists:", !!process.env.POSTGRES_URL)
 
     const itemsResult = await query(`SELECT COUNT(*) as count FROM items`)
     const itemCount = itemsResult.rows[0]?.count || 0
 
-    console.log(`[v0] Found ${itemCount} items in Supabase`)
+    console.log(`[v0] Found ${itemCount} items in database`)
 
     // Get sample items
     const sampleItems = await query(`SELECT * FROM items LIMIT 10`)
@@ -20,7 +20,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       databaseConnected: true,
-      databaseType: "Supabase/PostgreSQL",
+      databaseType: "Neon/PostgreSQL",
       postgresUrlExists: !!process.env.POSTGRES_URL,
       databaseUrlExists: !!process.env.DATABASE_URL,
       itemsCount: Number(itemCount),
@@ -33,7 +33,7 @@ export async function GET() {
       })),
     })
   } catch (error: any) {
-    console.error("[v0] Supabase debug error:", error)
+    console.error("[v0] Database debug error:", error)
     return NextResponse.json(
       {
         success: false,

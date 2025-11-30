@@ -10,18 +10,24 @@ export function getPool(): Pool {
       throw new Error("DATABASE_URL or POSTGRES_URL environment variable is required")
     }
 
-    const connectionStringWithSSL = connectionString.includes("?")
-      ? `${connectionString}&sslmode=disable`
-      : `${connectionString}?sslmode=disable`
+    // Remove sslmode=disable and add rejectUnauthorized=false for secure connections
+    const finalConnectionString = connectionString.includes("sslmode")
+      ? connectionString
+      : connectionString.includes("?")
+        ? `${connectionString}&sslmode=require`
+        : `${connectionString}?sslmode=require`
 
     pool = new Pool({
-      connectionString: connectionStringWithSSL,
+      connectionString: finalConnectionString,
       max: 100,
       min: 10,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
       maxUses: 7500,
       allowExitOnIdle: false,
+      ssl: {
+        rejectUnauthorized: false,
+      },
     })
 
     pool.on("error", (err) => {
