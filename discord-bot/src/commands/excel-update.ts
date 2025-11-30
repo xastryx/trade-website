@@ -171,52 +171,42 @@ async function handleUpload(interaction: ChatInputCommandInteraction) {
     for (const item of items) {
       try {
         if (!dryRun) {
-          const itemData: any = {
-            name: item.name,
-            game: "Adopt Me",
-            section: item.section || "Pets",
-            rap_value: item.rap_value || 0,
-            // Store the variant values from Excel
-            ...(item.value_f && { value_f: item.value_f }),
-            ...(item.value_fr && { value_fr: item.value_fr }),
-            ...(item.value_r && { value_r: item.value_r }),
-            ...(item.value_n && { value_n: item.value_n }),
-            ...(item.value_nfr && { value_nfr: item.value_nfr }),
-            ...(item.value_nf && { value_nf: item.value_nf }),
-            ...(item.value_nr && { value_nr: item.value_nr }),
-            ...(item.value_mfr && { value_mfr: item.value_mfr }),
-            ...(item.value_mf && { value_mf: item.value_mf }),
-            ...(item.value_mr && { value_mr: item.value_mr }),
-            ...(item.value_m && { value_m: item.value_m }),
-            ...(item.value_h && { value_h: item.value_h }),
-            demand: item.demand || null,
-            rarity: item.rarity || null,
-            image_url: item.image_url || null,
-            updated_at: new Date(),
-            created_at: new Date(),
-          }
-
-          // Use UPSERT - insert if not exists, update if exists
-          const columns = Object.keys(itemData)
-          const placeholders = columns.map((_, i) => `$${i + 1}`)
-          const values = columns.map((col) => itemData[col])
-
-          // Build the UPDATE clause for conflict resolution (exclude created_at)
-          const updateColumns = columns.filter((col) => col !== "created_at" && col !== "name" && col !== "game")
-          const updateClause = updateColumns.map((col) => `${col} = EXCLUDED.${col}`).join(", ")
-
-          await sql(
-            [
-              `
-              INSERT INTO items (${columns.join(", ")})
-              VALUES (${placeholders.join(", ")})
-              ON CONFLICT (name, game) 
-              DO UPDATE SET ${updateClause}
-              RETURNING (xmax = 0) as inserted
-            `,
-            ] as any,
-            ...values,
-          )
+          await sql`
+            INSERT INTO items (
+              name, game, section, rap_value, 
+              value_f, value_fr, value_r, value_n,
+              value_nfr, value_nf, value_nr,
+              value_mfr, value_mf, value_mr, value_m, value_h,
+              demand, rarity, image_url, updated_at, created_at
+            )
+            VALUES (
+              ${item.name}, 'Adopt Me', ${item.section || "Pets"}, ${item.rap_value || 0},
+              ${item.value_f || null}, ${item.value_fr || null}, ${item.value_r || null}, ${item.value_n || null},
+              ${item.value_nfr || null}, ${item.value_nf || null}, ${item.value_nr || null},
+              ${item.value_mfr || null}, ${item.value_mf || null}, ${item.value_mr || null}, ${item.value_m || null}, ${item.value_h || null},
+              ${item.demand || null}, ${item.rarity || null}, ${item.image_url || null}, NOW(), NOW()
+            )
+            ON CONFLICT (name, game)
+            DO UPDATE SET
+              section = EXCLUDED.section,
+              rap_value = EXCLUDED.rap_value,
+              value_f = COALESCE(EXCLUDED.value_f, items.value_f),
+              value_fr = COALESCE(EXCLUDED.value_fr, items.value_fr),
+              value_r = COALESCE(EXCLUDED.value_r, items.value_r),
+              value_n = COALESCE(EXCLUDED.value_n, items.value_n),
+              value_nfr = COALESCE(EXCLUDED.value_nfr, items.value_nfr),
+              value_nf = COALESCE(EXCLUDED.value_nf, items.value_nf),
+              value_nr = COALESCE(EXCLUDED.value_nr, items.value_nr),
+              value_mfr = COALESCE(EXCLUDED.value_mfr, items.value_mfr),
+              value_mf = COALESCE(EXCLUDED.value_mf, items.value_mf),
+              value_mr = COALESCE(EXCLUDED.value_mr, items.value_mr),
+              value_m = COALESCE(EXCLUDED.value_m, items.value_m),
+              value_h = COALESCE(EXCLUDED.value_h, items.value_h),
+              demand = COALESCE(EXCLUDED.demand, items.demand),
+              rarity = COALESCE(EXCLUDED.rarity, items.rarity),
+              image_url = COALESCE(EXCLUDED.image_url, items.image_url),
+              updated_at = NOW()
+          `
         }
 
         // Check if item exists to determine insert vs update for dry run
