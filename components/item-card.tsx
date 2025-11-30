@@ -246,6 +246,7 @@ export function ItemCard({ item, hideAddButton = false }: ItemCardProps) {
                       className="w-full h-full object-contain drop-shadow-2xl"
                       onError={() => setImageError(true)}
                       loading="eager"
+                      referrerPolicy="no-referrer"
                     />
                   ) : (
                     <Image
