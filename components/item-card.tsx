@@ -244,12 +244,8 @@ export function ItemCard({ item, hideAddButton = false }: ItemCardProps) {
                       src={imageUrl || "/placeholder.svg"}
                       alt={item.name}
                       className="w-full h-full object-contain drop-shadow-2xl"
-                      onError={() => {
-                        console.log("[v0] Image failed to load:", imageUrl)
-                        setImageError(true)
-                      }}
+                      onError={() => setImageError(true)}
                       loading="eager"
-                      crossOrigin="anonymous"
                     />
                   ) : (
                     <Image
@@ -257,10 +253,7 @@ export function ItemCard({ item, hideAddButton = false }: ItemCardProps) {
                       alt={item.name}
                       fill
                       className="object-contain drop-shadow-2xl"
-                      onError={() => {
-                        console.log("[v0] Next Image failed to load:", imageUrl)
-                        setImageError(true)
-                      }}
+                      onError={() => setImageError(true)}
                     />
                   )}
                 </div>
