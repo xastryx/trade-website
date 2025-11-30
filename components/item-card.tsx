@@ -177,13 +177,22 @@ export function ItemCard({ item, hideAddButton = false }: ItemCardProps) {
         description: (
           <div className="mt-3 flex items-center gap-3 rounded-lg bg-background/50 p-3 border border-green-500/30">
             <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-border bg-card">
-              <Image
-                src={imageUrl || "/placeholder.svg"}
-                alt={item.name}
-                fill
-                className="object-contain p-1"
-                sizes="64px"
-              />
+              {isExternalImage && !imageError ? (
+                <img
+                  src={imageUrl || "/placeholder.svg"}
+                  alt={item.name}
+                  className="w-full h-full object-contain p-1"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <Image
+                  src={imageUrl || "/placeholder.svg"}
+                  alt={item.name}
+                  fill
+                  className="object-contain p-1"
+                  sizes="64px"
+                />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-base text-foreground truncate">{item.name}</p>
