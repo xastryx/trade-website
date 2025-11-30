@@ -76,15 +76,14 @@ export const addItemCommand: BotCommand = {
         INSERT INTO items (
           name, 
           section, 
-          rap_value, 
+          value,
           image_url, 
           game, 
           rarity, 
           demand, 
           pot,
           created_at,
-          updated_at,
-          last_updated_at
+          updated_at
         )
         VALUES (
           ${name},
@@ -95,7 +94,6 @@ export const addItemCommand: BotCommand = {
           ${rarity || null},
           ${demand || null},
           ${pot || null},
-          ${now},
           ${now},
           ${now}
         )
@@ -111,8 +109,11 @@ export const addItemCommand: BotCommand = {
         `✅ Successfully added **${name}** to ${game}!\n${fieldsSummary}\n🆔 ID: ${result[0].id}`,
       )
     } catch (error) {
-      console.error("[v0] Error adding item:", error)
-      await interaction.editReply("❌ Failed to add item to database. Please try again.")
+      console.error("Error adding item:", error)
+      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      await interaction.editReply(
+        `❌ Failed to add item to database: ${errorMessage}\nPlease try again or contact support.`,
+      )
     }
   },
 }
