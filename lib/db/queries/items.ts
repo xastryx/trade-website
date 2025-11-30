@@ -1,4 +1,4 @@
-import { query } from "@/lib/db/postgres"
+import { queryDatabase, querySingle } from "@/lib/neon/server"
 
 export interface Item {
   id: string
@@ -29,9 +29,9 @@ export async function getItems(game?: string): Promise<Item[]> {
       : `SELECT * FROM items ORDER BY rap_value DESC NULLS LAST`
 
     const params = game ? [game] : []
-    const result = await query(sql, params)
+    const result = await queryDatabase(sql, params)
 
-    return result.rows
+    return result
   } catch (error) {
     console.error("Error fetching items:", error)
     return []
@@ -51,9 +51,9 @@ export async function searchItems(searchQuery: string, game?: string): Promise<I
          LIMIT 20`
 
     const params = game ? [`%${searchQuery}%`, game] : [`%${searchQuery}%`]
-    const result = await query(sql, params)
+    const result = await queryDatabase(sql, params)
 
-    return result.rows
+    return result
   } catch (error) {
     console.error("Error searching items:", error)
     return []
@@ -62,9 +62,9 @@ export async function searchItems(searchQuery: string, game?: string): Promise<I
 
 export async function getItemById(id: string): Promise<Item | null> {
   try {
-    const result = await query(`SELECT * FROM items WHERE id = $1`, [id])
+    const result = await querySingle(`SELECT * FROM items WHERE id = $1`, [id])
 
-    return result.rows[0] || null
+    return result as Item | null
   } catch (error) {
     console.error("Error fetching item by ID:", error)
     return null
@@ -73,7 +73,7 @@ export async function getItemById(id: string): Promise<Item | null> {
 
 export async function createItem(item: Omit<Item, "id" | "created_at" | "updated_at">): Promise<Item | null> {
   try {
-    const result = await query(
+    const result = await queryDatabase(
       `INSERT INTO items (
         name, rap_value, game, section, image_url,
         rarity, demand, pot
@@ -82,7 +82,7 @@ export async function createItem(item: Omit<Item, "id" | "created_at" | "updated
       [item.name, item.rap_value, item.game, item.section, item.image_url, item.rarity, item.demand, item.pot],
     )
 
-    return result.rows[0]
+    return result[0] as Item | null
   } catch (error) {
     console.error("Error creating item:", error)
     return null
@@ -97,7 +97,7 @@ export async function updateItem(id: string, updates: Partial<Item>): Promise<bo
 
     const values = Object.values(updates)
 
-    await query(`UPDATE items SET ${fields}, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id, ...values])
+    await queryDatabase(`UPDATE items SET ${fields}, updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [id, ...values])
 
     return true
   } catch (error) {
@@ -108,7 +108,7 @@ export async function updateItem(id: string, updates: Partial<Item>): Promise<bo
 
 export async function deleteItem(id: string): Promise<boolean> {
   try {
-    await query(`DELETE FROM items WHERE id = $1`, [id])
+    await queryDatabase(`DELETE FROM items WHERE id = $1`, [id])
     return true
   } catch (error) {
     console.error("Error deleting item:", error)

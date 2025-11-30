@@ -1,4 +1,4 @@
-export const dynamic = 'force-dynamic'
+export const dynamic = "force-dynamic"
 export const revalidate = 3600
 
 import { type NextRequest, NextResponse } from "next/server"
@@ -9,10 +9,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const game = searchParams.get("game") || undefined
     const q = searchParams.get("q")?.toLowerCase() || ""
-    const limit = Number.parseInt(searchParams.get("limit") || "2000") // Increased default limit from 1000 to 2000 for better initial load
+    const limit = Number.parseInt(searchParams.get("limit") || "2000")
     const offset = Number.parseInt(searchParams.get("offset") || "0")
 
+    console.log("[v0] Fetching items - game:", game, "search:", q, "limit:", limit, "offset:", offset)
+
     const items = q ? await searchItems(q, game) : await getItems(game)
+
+    console.log("[v0] Found items:", items.length)
 
     const paginatedItems = items.slice(offset, offset + limit)
     const totalCount = items.length
@@ -66,12 +70,12 @@ export async function GET(request: NextRequest) {
       },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=7200, stale-while-revalidate=14400", // Increased cache time from 3600 to 7200 seconds (2 hours) for better performance
+          "Cache-Control": "public, s-maxage=7200, stale-while-revalidate=14400",
         },
       },
     )
   } catch (error) {
     console.error("Error fetching items:", error)
-    return NextResponse.json({ error: "Failed to fetch items" }, { status: 500 })
+    return NextResponse.json({ error: "Failed to fetch items", details: String(error) }, { status: 500 })
   }
 }

@@ -11,11 +11,14 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    console.log("[v0] Fetching activities for user:", session.discordId)
+
     const activities = await getActivitiesByDiscordId(session.discordId, 20)
 
     return NextResponse.json({ activities: activities || [] })
   } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("[v0] Error in activity GET:", error)
+    return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 })
   }
 }
 
@@ -42,9 +45,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, data })
   } catch (error) {
+    console.error("[v0] Error in activity POST:", error)
     return NextResponse.json(
       {
         error: "Internal server error",
+        details: String(error),
       },
       { status: 500 },
     )

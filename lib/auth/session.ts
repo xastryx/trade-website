@@ -1,5 +1,5 @@
 import { cookies } from "next/headers"
-import { query } from "@/lib/db/postgres"
+import { queryDatabase, querySingle } from "@/lib/neon/server"
 
 const SESSION_COOKIE_NAME = "trade_session_id"
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30
@@ -23,20 +23,20 @@ export async function createSession(
 ): Promise<string> {
   const expiresAt = new Date(Date.now() + expiresIn * 1000)
 
-  await query("DELETE FROM sessions WHERE discord_id = $1", [discordId])
+  await queryDatabase("DELETE FROM sessions WHERE discord_id = $1", [discordId])
 
-  const result = await query(
+  const result = await queryDatabase(
     `INSERT INTO sessions (discord_id, access_token, refresh_token, token_expires_at, last_activity_at)
      VALUES ($1, $2, $3, $4, $5)
      RETURNING id`,
     [discordId, accessToken, refreshToken || null, expiresAt.toISOString(), new Date().toISOString()],
   )
 
-  if (!result.rows || result.rows.length === 0) {
+  if (!result || result.length === 0) {
     throw new Error("Failed to create session")
   }
 
-  const sessionId = result.rows[0].id
+  const sessionId = (result[0] as any).id
 
   const cookieStore = await cookies()
   cookieStore.set(SESSION_COOKIE_NAME, sessionId, {
@@ -59,7 +59,7 @@ export async function getSession(): Promise<UserSession | null> {
   }
 
   try {
-    const result = await query(
+    const session = await querySingle(
       `SELECT 
         s.id,
         s.discord_id,
@@ -75,30 +75,29 @@ export async function getSession(): Promise<UserSession | null> {
       [sessionId],
     )
 
-    if (!result.rows || result.rows.length === 0) {
+    if (!session) {
       await destroySession()
       return null
     }
 
-    const session = result.rows[0]
-
-    const expiresAt = new Date(session.token_expires_at)
+    const expiresAt = new Date((session as any).token_expires_at)
     if (expiresAt < new Date()) {
       await destroySession()
       return null
     }
 
-    query("UPDATE sessions SET last_activity_at = $1 WHERE id = $2", [new Date().toISOString(), sessionId]).catch(
-      (err) => console.error("Failed to update last activity:", err),
-    )
+    queryDatabase("UPDATE sessions SET last_activity_at = $1 WHERE id = $2", [
+      new Date().toISOString(),
+      sessionId,
+    ]).catch((err) => console.error("Failed to update last activity:", err))
 
     return {
-      sessionId: session.id,
-      discordId: session.discord_id,
-      username: session.username,
-      globalName: session.global_name,
-      avatarUrl: session.avatar_url,
-      email: session.email,
+      sessionId: (session as any).id,
+      discordId: (session as any).discord_id,
+      username: (session as any).username,
+      globalName: (session as any).global_name,
+      avatarUrl: (session as any).avatar_url,
+      email: (session as any).email,
     }
   } catch (error) {
     console.error("Session fetch error:", error)
@@ -113,7 +112,7 @@ export async function destroySession(): Promise<void> {
 
   if (sessionId) {
     try {
-      await query("DELETE FROM sessions WHERE id = $1", [sessionId])
+      await queryDatabase("DELETE FROM sessions WHERE id = $1", [sessionId])
     } catch (error) {
       console.error("Session deletion error:", error)
     }
@@ -130,13 +129,12 @@ export async function destroySession(): Promise<void> {
 
 export async function refreshDiscordToken(sessionId: string): Promise<boolean> {
   try {
-    const result = await query("SELECT refresh_token, discord_id FROM sessions WHERE id = $1", [sessionId])
+    const session = await querySingle("SELECT refresh_token, discord_id FROM sessions WHERE id = $1", [sessionId])
 
-    if (!result.rows || result.rows.length === 0 || !result.rows[0].refresh_token) {
+    if (!session || !(session as any).refresh_token) {
       return false
     }
 
-    const session = result.rows[0]
     const clientId = process.env.DISCORD_CLIENT_ID
     const clientSecret = process.env.DISCORD_CLIENT_SECRET
 
@@ -148,7 +146,7 @@ export async function refreshDiscordToken(sessionId: string): Promise<boolean> {
       client_id: clientId,
       client_secret: clientSecret,
       grant_type: "refresh_token",
-      refresh_token: session.refresh_token,
+      refresh_token: (session as any).refresh_token,
     })
 
     const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
@@ -164,7 +162,7 @@ export async function refreshDiscordToken(sessionId: string): Promise<boolean> {
     const tokenData = await tokenRes.json()
     const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000)
 
-    await query(
+    await queryDatabase(
       `UPDATE sessions 
        SET access_token = $1, 
            refresh_token = $2, 
@@ -173,7 +171,7 @@ export async function refreshDiscordToken(sessionId: string): Promise<boolean> {
        WHERE id = $5`,
       [
         tokenData.access_token,
-        tokenData.refresh_token || session.refresh_token,
+        tokenData.refresh_token || (session as any).refresh_token,
         expiresAt.toISOString(),
         new Date().toISOString(),
         sessionId,
