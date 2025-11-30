@@ -76,6 +76,10 @@ const nextConfig = {
         protocol: 'https',
         hostname: 't7.rbxcdn.com',
       },
+      {
+        protocol: 'https',
+        hostname: 'files.catbox.moe',
+      },
     ],
   },
   compress: true,
