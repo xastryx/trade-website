@@ -239,14 +239,22 @@ export function ItemCard({ item, hideAddButton = false }: ItemCardProps) {
 
               <div className="absolute inset-0 flex items-center justify-center p-6">
                 <div className="relative w-full h-full">
-                  <Image
-                    src={imageUrl || "/placeholder.svg"}
-                    alt={item.name}
-                    fill
-                    className="object-contain drop-shadow-2xl"
-                    onError={() => setImageError(true)}
-                    unoptimized={isExternalImage}
-                  />
+                  {isExternalImage && !imageError ? (
+                    <img
+                      src={imageUrl || "/placeholder.svg"}
+                      alt={item.name}
+                      className="w-full h-full object-contain drop-shadow-2xl"
+                      onError={() => setImageError(true)}
+                    />
+                  ) : (
+                    <Image
+                      src={imageUrl || "/placeholder.svg"}
+                      alt={item.name}
+                      fill
+                      className="object-contain drop-shadow-2xl"
+                      onError={() => setImageError(true)}
+                    />
+                  )}
                 </div>
               </div>
 
