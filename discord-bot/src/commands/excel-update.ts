@@ -38,7 +38,7 @@ export const excelUpdateCommand: BotCommand = {
 }
 
 async function handleTemplate(interaction: ChatInputCommandInteraction) {
-  await interaction.deferReply({ ephemeral: true })
+  await interaction.deferReply({ flags: 64 })
 
   try {
     const buffer = generateExampleExcel()
@@ -68,7 +68,7 @@ async function handleTemplate(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply({ embeds: [embed], files: [attachment] })
   } catch (error) {
-    console.error("[v0] Error generating template:", error)
+    console.error("Error generating template:", error)
     await interaction.editReply("Failed to generate template file.")
   }
 }
@@ -99,11 +99,11 @@ async function handleHelp(interaction: ChatInputCommandInteraction) {
     .setColor(0x5865f2)
     .setFooter({ text: "Use /excel-update template to get started" })
 
-  await interaction.reply({ embeds: [embed], ephemeral: true })
+  await interaction.reply({ embeds: [embed], flags: 64 })
 }
 
 async function handleUpload(interaction: ChatInputCommandInteraction) {
-  await interaction.deferReply({ ephemeral: true })
+  await interaction.deferReply({ flags: 64 })
 
   const attachment = interaction.options.getAttachment("file", true)
   const dryRun = interaction.options.getBoolean("dry-run") || false
@@ -115,18 +115,14 @@ async function handleUpload(interaction: ChatInputCommandInteraction) {
   }
 
   if (attachment.size > 10 * 1024 * 1024) {
-    // 10MB limit
     await interaction.editReply("File too large. Maximum size is 10MB.")
     return
   }
 
   try {
-    // Download the file
-    await interaction.editReply("Downloading and parsing Excel file...")
+    // Download and parse
     const response = await fetch(attachment.url)
     const buffer = Buffer.from(await response.arrayBuffer())
-
-    // Parse the Excel file
     const { items, errors, warnings } = parseExcelBuffer(buffer)
 
     if (errors.length > 0) {
@@ -134,7 +130,6 @@ async function handleUpload(interaction: ChatInputCommandInteraction) {
         "**Parsing Errors:**\n" +
         errors.slice(0, 10).join("\n") +
         (errors.length > 10 ? `\n... and ${errors.length - 10} more errors` : "")
-
       await interaction.editReply(errorMessage)
       return
     }
@@ -149,17 +144,16 @@ async function handleUpload(interaction: ChatInputCommandInteraction) {
       return
     }
 
-    // Show warnings if any
+    // Show initial status
     let statusMessage = `Found ${items.length} items to update.\n`
     if (warnings.length > 0) {
-      statusMessage += `\n**Warnings:**\n${warnings.slice(0, 5).join("\n")}\n`
+      statusMessage += `\n**Warnings:**\n${warnings.join("\n")}\n`
     }
+    statusMessage += dryRun
+      ? "\n**DRY RUN MODE** - No changes will be made.\n\nProcessing..."
+      : "\nProcessing updates..."
 
-    if (dryRun) {
-      await interaction.editReply(statusMessage + "\n**DRY RUN MODE** - No changes will be made.\n\nProcessing...")
-    } else {
-      await interaction.editReply(statusMessage + "\nProcessing updates...")
-    }
+    await interaction.editReply(statusMessage)
 
     const results = {
       inserted: 0,
@@ -168,60 +162,70 @@ async function handleUpload(interaction: ChatInputCommandInteraction) {
       errors: [] as string[],
     }
 
-    for (const item of items) {
-      try {
-        if (!dryRun) {
-          await sql`
-            INSERT INTO items (
-              name, game, section, rap_value, 
-              value_f, value_fr, value_r, value_n,
-              value_nfr, value_nf, value_nr,
-              value_mfr, value_mf, value_mr, value_m, value_h,
-              demand, rarity, image_url, updated_at, created_at
-            )
-            VALUES (
-              ${item.name}, 'adoptme', ${item.section || "Pets"}, ${item.rap_value || 0},
-              ${item.value_f || null}, ${item.value_fr || null}, ${item.value_r || null}, ${item.value_n || null},
-              ${item.value_nfr || null}, ${item.value_nf || null}, ${item.value_nr || null},
-              ${item.value_mfr || null}, ${item.value_mf || null}, ${item.value_mr || null}, ${item.value_m || null}, ${item.value_h || null},
-              ${item.demand || null}, ${item.rarity || null}, ${item.image_url || null}, NOW(), NOW()
-            )
-            ON CONFLICT (name, game)
-            DO UPDATE SET
-              section = EXCLUDED.section,
-              rap_value = EXCLUDED.rap_value,
-              value_f = COALESCE(EXCLUDED.value_f, items.value_f),
-              value_fr = COALESCE(EXCLUDED.value_fr, items.value_fr),
-              value_r = COALESCE(EXCLUDED.value_r, items.value_r),
-              value_n = COALESCE(EXCLUDED.value_n, items.value_n),
-              value_nfr = COALESCE(EXCLUDED.value_nfr, items.value_nfr),
-              value_nf = COALESCE(EXCLUDED.value_nf, items.value_nf),
-              value_nr = COALESCE(EXCLUDED.value_nr, items.value_nr),
-              value_mfr = COALESCE(EXCLUDED.value_mfr, items.value_mfr),
-              value_mf = COALESCE(EXCLUDED.value_mf, items.value_mf),
-              value_mr = COALESCE(EXCLUDED.value_mr, items.value_mr),
-              value_m = COALESCE(EXCLUDED.value_m, items.value_m),
-              value_h = COALESCE(EXCLUDED.value_h, items.value_h),
-              demand = COALESCE(EXCLUDED.demand, items.demand),
-              rarity = COALESCE(EXCLUDED.rarity, items.rarity),
-              image_url = COALESCE(EXCLUDED.image_url, items.image_url),
-              updated_at = NOW()
+    const batchSize = 50
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize)
+
+      for (const item of batch) {
+        try {
+          const existingItems = await sql`
+            SELECT id FROM items WHERE game = 'adoptme' AND LOWER(name) = LOWER(${item.name}) LIMIT 1
           `
-        }
+          const isUpdate = existingItems.length > 0
 
-        // Check if item exists to determine insert vs update for dry run
-        const existingItems = await sql`
-          SELECT id FROM items WHERE game = 'adoptme' AND LOWER(name) = LOWER(${item.name}) LIMIT 1
-        `
+          if (!dryRun) {
+            await sql`
+              INSERT INTO items (
+                name, game, section, rap_value, 
+                value_f, value_fr, value_r, value_n,
+                value_nfr, value_nf, value_nr,
+                value_mfr, value_mf, value_mr, value_m, value_h,
+                demand, rarity, image_url, updated_at, created_at
+              )
+              VALUES (
+                ${item.name}, 'adoptme', ${item.section || "Pets"}, ${item.rap_value || 0},
+                ${item.value_f || null}, ${item.value_fr || null}, ${item.value_r || null}, ${item.value_n || null},
+                ${item.value_nfr || null}, ${item.value_nf || null}, ${item.value_nr || null},
+                ${item.value_mfr || null}, ${item.value_mf || null}, ${item.value_mr || null}, ${item.value_m || null}, ${item.value_h || null},
+                ${item.demand || null}, ${item.rarity || null}, ${item.image_url || null}, NOW(), NOW()
+              )
+              ON CONFLICT (name, game)
+              DO UPDATE SET
+                section = EXCLUDED.section,
+                rap_value = EXCLUDED.rap_value,
+                value_f = COALESCE(EXCLUDED.value_f, items.value_f),
+                value_fr = COALESCE(EXCLUDED.value_fr, items.value_fr),
+                value_r = COALESCE(EXCLUDED.value_r, items.value_r),
+                value_n = COALESCE(EXCLUDED.value_n, items.value_n),
+                value_nfr = COALESCE(EXCLUDED.value_nfr, items.value_nfr),
+                value_nf = COALESCE(EXCLUDED.value_nf, items.value_nf),
+                value_nr = COALESCE(EXCLUDED.value_nr, items.value_nr),
+                value_mfr = COALESCE(EXCLUDED.value_mfr, items.value_mfr),
+                value_mf = COALESCE(EXCLUDED.value_mf, items.value_mf),
+                value_mr = COALESCE(EXCLUDED.value_mr, items.value_mr),
+                value_m = COALESCE(EXCLUDED.value_m, items.value_m),
+                value_h = COALESCE(EXCLUDED.value_h, items.value_h),
+                demand = COALESCE(EXCLUDED.demand, items.demand),
+                rarity = COALESCE(EXCLUDED.rarity, items.rarity),
+                image_url = COALESCE(EXCLUDED.image_url, items.image_url),
+                updated_at = NOW()
+            `
+          }
 
-        if (existingItems.length > 0) {
-          results.updated++
-        } else {
-          results.inserted++
+          if (isUpdate) {
+            results.updated++
+          } else {
+            results.inserted++
+          }
+        } catch (error: any) {
+          results.failed++
+          results.errors.push(`Failed to process "${item.name}": ${error.message}`)
         }
-      } catch (error: any) {
-        results.failed++
-        results.errors.push(`Failed to process "${item.name}": ${error.message}`)
+      }
+
+      if (i + batchSize < items.length) {
+        const progress = Math.min(i + batchSize, items.length)
+        await interaction.editReply(statusMessage + `\n\nProgress: ${progress}/${items.length} items processed...`)
       }
     }
 
@@ -259,7 +263,7 @@ async function handleUpload(interaction: ChatInputCommandInteraction) {
 
     await interaction.editReply({ embeds: [embed] })
   } catch (error) {
-    console.error("[v0] Error processing Excel upload:", error)
+    console.error("Error processing Excel upload:", error)
     await interaction.editReply("Failed to process Excel file. Please check the format and try again.")
   }
 }
