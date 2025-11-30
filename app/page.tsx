@@ -5,6 +5,7 @@ import { SiteFooter } from "@/components/site-footer"
 import { PageBackground } from "@/components/page-background"
 import { ScrollParallax } from "@/components/scroll-parallax"
 import { CableIcon as CalcIcon, MessageSquare } from "lucide-react"
+import { AdBanner } from "@/components/ad-banner"
 
 export const revalidate = 3600
 
@@ -169,16 +170,21 @@ export default function HomePage() {
     <main className="relative min-h-dvh bg-background">
       <PageBackground />
       <ScrollParallax />
-      {/* ensure content layers above parallax for readability */}
       <div className="relative z-[2] mx-auto w-full max-w-6xl px-4 py-10 md:py-16">
         <SiteHeader />
 
-        {/* Replace previous hero with the new reference-driven hero */}
         <ReferenceHero />
 
-        {/* Keep existing DiscordCTA and About for depth */}
+        <div className="mt-6 md:mt-8 flex justify-center">
+          <AdBanner dataAdSlot="1234567890" dataAdFormat="horizontal" className="w-full max-w-[728px]" />
+        </div>
+
         <DiscordCTA />
         <About />
+
+        <div className="mt-6 md:mt-8 flex justify-center">
+          <AdBanner dataAdSlot="0987654321" dataAdFormat="horizontal" className="w-full max-w-[728px]" />
+        </div>
 
         <SiteFooter />
       </div>

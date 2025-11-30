@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { ItemCard } from "@/components/item-card"
 import { Search } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { AdBanner } from "@/components/ad-banner"
 
 const GAMES = ["MM2", "SAB", "Adopt Me"] as const
 const VISIBLE_GAMES = ["Adopt Me"] as const
@@ -80,6 +81,10 @@ export function ValuesContent() {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9"
         />
+      </div>
+
+      <div className="flex justify-center py-2">
+        <AdBanner dataAdSlot="1111111111" dataAdFormat="horizontal" className="w-full max-w-[728px]" />
       </div>
 
       {loading ? (
