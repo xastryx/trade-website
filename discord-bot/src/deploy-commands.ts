@@ -45,7 +45,7 @@ const rest = new REST().setToken(process.env.DISCORD_BOT_TOKEN)
     console.log(`🔄 Started refreshing ${commands.length} application (/) commands.`)
 
     const data = await rest.put(
-      Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID, process.env.DISCORD_GUILD_ID),
+      Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID as string, process.env.DISCORD_GUILD_ID as string),
       { body: commands },
     )
 

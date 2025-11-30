@@ -1,31 +1,32 @@
-import dotenv from "dotenv"
+import { sql } from "./database.js"
 
-dotenv.config()
-
-const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error("❌ Supabase credentials not found in environment variables")
-  console.error("Please ensure you have SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your .env file")
-  throw new Error("Missing Supabase credentials")
+// Helper function to get items from Neon database
+export async function getItemsTable(gameName = "Adopt Me") {
+  return await sql`SELECT * FROM items WHERE game = ${gameName}`
 }
 
-export const supabase = {
-  from: () => {
-    throw new Error("Supabase has been removed. Use Neon database functions from lib/database.ts instead.")
-  },
+// Query items by name
+export async function getItemByName(name: string, gameName = "Adopt Me") {
+  const result = await sql`SELECT * FROM items WHERE LOWER(name) = LOWER(${name}) AND game = ${gameName} LIMIT 1`
+  return result[0] || null
 }
 
-export function createAdminClient() {
-  throw new Error("Supabase has been removed. Use Neon database functions from lib/database.ts instead.")
-}
+// Update item in Neon
+export async function updateItem(name: string, updates: Record<string, any>, gameName = "Adopt Me") {
+  const columns = Object.keys(updates)
+  const setClause = columns.map((col, i) => `${col} = $${i + 1}`).join(", ")
+  const values = Object.values(updates)
 
-// Helper function to get items table
-export async function getItemsTable() {
-  return supabase.from("items")
+  return await sql(
+    [
+      `UPDATE items SET ${setClause} WHERE LOWER(name) = LOWER($${values.length + 1}) AND game = $${values.length + 2} RETURNING *`,
+    ] as any,
+    ...values,
+    name,
+    gameName,
+  )
 }
 
 export function deprecatedSupabaseWarning() {
-  console.warn("⚠️  Supabase is no longer used. Please use Neon database functions from lib/database.ts")
+  console.warn("⚠️  Supabase is no longer used. Using Neon database instead.")
 }

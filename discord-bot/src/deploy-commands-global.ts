@@ -38,7 +38,7 @@ const rest = new REST().setToken(process.env.DISCORD_BOT_TOKEN)
     console.log(`🔄 Started refreshing ${commands.length} global application (/) commands.`)
     console.log(`⚠️  Note: Global commands can take up to 1 hour to update across all servers.`)
 
-    const data = await rest.put(Routes.applicationCommands(process.env.DISCORD_CLIENT_ID), { body: commands })
+    const data = await rest.put(Routes.applicationCommands(process.env.DISCORD_CLIENT_ID as string), { body: commands })
 
     console.log(`✅ Successfully reloaded ${(data as any).length} global application (/) commands.`)
     console.log(`⏳ Commands will be available globally within 1 hour.`)

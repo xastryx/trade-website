@@ -171,27 +171,29 @@ async function handleUpload(interaction: ChatInputCommandInteraction) {
     for (const item of items) {
       try {
         if (!dryRun) {
-          // Build the item data
           const itemData: any = {
             name: item.name,
             game: "Adopt Me",
             section: item.section || "Pets",
-            value: item.value || 0,
             rap_value: item.rap_value || 0,
-            neon_value: item.neon_value || 0,
-            mega_value: item.mega_value || 0,
+            // Store the variant values from Excel
+            ...(item.value_f && { value_f: item.value_f }),
+            ...(item.value_fr && { value_fr: item.value_fr }),
+            ...(item.value_r && { value_r: item.value_r }),
+            ...(item.value_n && { value_n: item.value_n }),
+            ...(item.value_nfr && { value_nfr: item.value_nfr }),
+            ...(item.value_nf && { value_nf: item.value_nf }),
+            ...(item.value_nr && { value_nr: item.value_nr }),
+            ...(item.value_mfr && { value_mfr: item.value_mfr }),
+            ...(item.value_mf && { value_mf: item.value_mf }),
+            ...(item.value_mr && { value_mr: item.value_mr }),
+            ...(item.value_m && { value_m: item.value_m }),
+            ...(item.value_h && { value_h: item.value_h }),
             demand: item.demand || null,
             rarity: item.rarity || null,
             image_url: item.image_url || null,
             updated_at: new Date(),
             created_at: new Date(),
-          }
-
-          // Add all optional fields from the Excel
-          for (const key in item) {
-            if (key !== "name" && !itemData.hasOwnProperty(key)) {
-              itemData[key] = item[key as keyof typeof item]
-            }
           }
 
           // Use UPSERT - insert if not exists, update if exists
