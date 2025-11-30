@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useUser } from "@/lib/hooks/use-user"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { LogIn } from 'lucide-react'
+import { LogIn } from "lucide-react"
 import { AdoptMeInlineVariantSelector } from "./adoptme-inline-variant-selector"
 import { formatValue } from "@/lib/utils/format-value"
 
@@ -80,7 +80,7 @@ function isEgg(item: ItemCardProps["item"]): boolean {
     (item.value_f !== null && item.value_f !== undefined && item.value_f > 0) ||
     (item.value_r !== null && item.value_r !== undefined && item.value_r > 0) ||
     (item.value_n !== null && item.value_n !== undefined && item.value_n > 0)
-  
+
   return !hasVariants
 }
 
@@ -89,13 +89,13 @@ function getDisplayValue(item: ItemCardProps["item"]): number {
     const rapValue = toNumber(item.rap_value)
     return rapValue
   }
-  
+
   // For pets with variants, try value_fr first
   if (item.game === "Adopt Me" && item.value_fr !== null && item.value_fr !== undefined) {
     const frValue = toNumber(item.value_fr)
     if (frValue > 0) return frValue
   }
-  
+
   // Fallback to rap_value
   return toNumber(item.rap_value)
 }
@@ -125,6 +125,8 @@ export function ItemCard({ item, hideAddButton = false }: ItemCardProps) {
     : getActualImageUrl(item.image_url || "/placeholder.svg?height=200&width=200")
 
   const timeAgo = getTimeAgo(item.last_updated_at)
+
+  const isExternalImage = imageUrl.startsWith("http://") || imageUrl.startsWith("https://")
 
   const handleAddToInventory = async () => {
     if (!user) {
@@ -243,6 +245,7 @@ export function ItemCard({ item, hideAddButton = false }: ItemCardProps) {
                     fill
                     className="object-contain drop-shadow-2xl"
                     onError={() => setImageError(true)}
+                    unoptimized={isExternalImage}
                   />
                 </div>
               </div>
@@ -307,19 +310,28 @@ export function ItemCard({ item, hideAddButton = false }: ItemCardProps) {
 
               <div className="absolute inset-0 flex flex-col justify-evenly px-8 py-2">
                 <div className="flex items-center justify-end h-[16px]">
-                  <span className="text-white font-extrabold text-[10px] text-right" style={{ textShadow: "1px 1px 1px #000" }}>
+                  <span
+                    className="text-white font-extrabold text-[10px] text-right"
+                    style={{ textShadow: "1px 1px 1px #000" }}
+                  >
                     {item.rarity || item.section || "N/A"}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-end h-[16px]">
-                  <span className="text-white font-extrabold text-[10px] text-right" style={{ textShadow: "1px 1px 1px #000" }}>
+                  <span
+                    className="text-white font-extrabold text-[10px] text-right"
+                    style={{ textShadow: "1px 1px 1px #000" }}
+                  >
                     {item.demand || "N/A"}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-end h-[16px]">
-                  <span className="text-white font-bold text-[10px] text-right" style={{ textShadow: "1px 1px 1px #000" }}>
+                  <span
+                    className="text-white font-bold text-[10px] text-right"
+                    style={{ textShadow: "1px 1px 1px #000" }}
+                  >
                     {formatValue(currentValue)}
                   </span>
                 </div>
