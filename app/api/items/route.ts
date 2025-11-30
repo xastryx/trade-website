@@ -12,11 +12,13 @@ export async function GET(request: NextRequest) {
     const limit = Number.parseInt(searchParams.get("limit") || "2000")
     const offset = Number.parseInt(searchParams.get("offset") || "0")
 
-    console.log("[v0] Fetching items - game:", game, "search:", q, "limit:", limit, "offset:", offset)
+    console.log("[v0] API Request - game:", game, "search:", q)
+    console.log("[v0] DATABASE_URL exists:", !!process.env.DATABASE_URL)
+    console.log("[v0] NEON_DATABASE_URL exists:", !!process.env.NEON_DATABASE_URL)
 
     const items = q ? await searchItems(q, game) : await getItems(game)
 
-    console.log("[v0] Found items:", items.length)
+    console.log("[v0] Items returned from database:", items.length)
 
     const paginatedItems = items.slice(offset, offset + limit)
     const totalCount = items.length
@@ -75,7 +77,7 @@ export async function GET(request: NextRequest) {
       },
     )
   } catch (error) {
-    console.error("Error fetching items:", error)
+    console.error("[v0] Error fetching items:", error)
     return NextResponse.json({ error: "Failed to fetch items", details: String(error) }, { status: 500 })
   }
 }

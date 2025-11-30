@@ -169,7 +169,7 @@ async function handleUpload(interaction: ChatInputCommandInteraction) {
       for (const item of batch) {
         try {
           const existingItems = await sql`
-            SELECT id FROM items WHERE game = 'adoptme' AND LOWER(name) = LOWER(${item.name}) LIMIT 1
+            SELECT id FROM items WHERE game = 'Adopt Me' AND LOWER(name) = LOWER(${item.name}) LIMIT 1
           `
           const isUpdate = existingItems.length > 0
 
@@ -183,7 +183,7 @@ async function handleUpload(interaction: ChatInputCommandInteraction) {
                 demand, rarity, image_url, updated_at, created_at
               )
               VALUES (
-                ${item.name}, 'adoptme', ${item.section || "Pets"}, ${item.rap_value || 0},
+                ${item.name}, 'Adopt Me', ${item.section || "Pets"}, ${item.rap_value || 0},
                 ${item.value_f || null}, ${item.value_fr || null}, ${item.value_r || null}, ${item.value_n || null},
                 ${item.value_nfr || null}, ${item.value_nf || null}, ${item.value_nr || null},
                 ${item.value_mfr || null}, ${item.value_mf || null}, ${item.value_mr || null}, ${item.value_m || null}, ${item.value_h || null},
