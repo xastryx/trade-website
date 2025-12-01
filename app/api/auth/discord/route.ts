@@ -17,8 +17,7 @@ export async function GET(req: Request) {
     maxAge: 60 * 10,
   })
 
-  const origin = process.env.NEXT_PUBLIC_BASE_URL || `${url.protocol}//${url.host}`
-  const redirectUri = process.env.DISCORD_REDIRECT_URI || `${origin}/api/auth/discord/callback`
+  const redirectUri = process.env.DISCORD_REDIRECT_URI || "https://rotraders.gg/api/auth/discord/callback"
 
   const clientId = process.env.DISCORD_CLIENT_ID
   if (!clientId) {
