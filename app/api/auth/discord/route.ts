@@ -17,7 +17,19 @@ export async function GET(req: Request) {
     maxAge: 60 * 10,
   })
 
-  const redirectUri = process.env.DISCORD_REDIRECT_URI || "https://rotraders.gg/api/auth/discord/callback"
+  const envRedirectUri = process.env.DISCORD_REDIRECT_URI
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
+  const requestHost = url.host
+
+  console.log("[v0] Discord OAuth Debug:")
+  console.log("[v0]   DISCORD_REDIRECT_URI env:", envRedirectUri)
+  console.log("[v0]   NEXT_PUBLIC_BASE_URL env:", baseUrl)
+  console.log("[v0]   Request host:", requestHost)
+  console.log("[v0]   Request origin:", url.origin)
+
+  const redirectUri = envRedirectUri || "https://rotraders.gg/api/auth/discord/callback"
+
+  console.log("[v0]   Final redirectUri being sent to Discord:", redirectUri)
 
   const clientId = process.env.DISCORD_CLIENT_ID
   if (!clientId) {
@@ -35,16 +47,9 @@ export async function GET(req: Request) {
     prompt: "consent",
   })
 
-  console.log(
-    "[v0] Discord OAuth initiated - state:",
-    state,
-    "redirectUri:",
-    redirectUri,
-    "isSecure:",
-    isSecure,
-    "cookieSet: discord_oauth_state",
-  )
-
   const authorizeUrl = `https://discord.com/api/oauth2/authorize?${params.toString()}`
+
+  console.log("[v0]   Full Discord authorize URL:", authorizeUrl)
+
   return Response.redirect(authorizeUrl, 302)
 }
