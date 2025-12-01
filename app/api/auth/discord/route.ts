@@ -12,9 +12,9 @@ export async function GET(req: Request) {
   cookieStore.set("discord_oauth_state", state, {
     httpOnly: true,
     secure: isSecure,
-    sameSite: "lax", // Changed from "none" to "lax" for OAuth compatibility
+    sameSite: "lax",
     path: "/",
-    maxAge: 60 * 10, // 10 minutes
+    maxAge: 60 * 10,
   })
 
   const origin = process.env.NEXT_PUBLIC_BASE_URL || `${url.protocol}//${url.host}`
@@ -30,13 +30,21 @@ export async function GET(req: Request) {
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
-    scope: "identify email",
+    scope: "identify email guilds.join",
     redirect_uri: redirectUri,
     state,
     prompt: "consent",
   })
 
-  console.log("[v0] Discord OAuth initiated - state:", state, "redirectUri:", redirectUri, "isSecure:", isSecure, "cookieSet: discord_oauth_state")
+  console.log(
+    "[v0] Discord OAuth initiated - state:",
+    state,
+    "redirectUri:",
+    redirectUri,
+    "isSecure:",
+    isSecure,
+    "cookieSet: discord_oauth_state",
+  )
 
   const authorizeUrl = `https://discord.com/api/oauth2/authorize?${params.toString()}`
   return Response.redirect(authorizeUrl, 302)
