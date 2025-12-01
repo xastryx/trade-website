@@ -69,7 +69,7 @@ export async function GET(req: Request) {
   const storedState = cookieStore.get("discord_oauth_state")?.value
 
   const USE_SECURE_COOKIES = true
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `${url.protocol}//${url.host}`
+  const baseUrl = "https://rotraders.gg"
 
   console.log(
     "[v0] Callback received - code:",
@@ -102,8 +102,7 @@ export async function GET(req: Request) {
 
   cookieStore.delete("discord_oauth_state")
 
-  const origin = process.env.NEXT_PUBLIC_BASE_URL || `${url.protocol}//${url.host}`
-  const redirectUri = process.env.DISCORD_REDIRECT_URI || `${origin}/api/auth/discord/callback`
+  const redirectUri = "https://rotraders.gg/api/auth/discord/callback"
 
   const clientId = process.env.DISCORD_CLIENT_ID
   const clientSecret = process.env.DISCORD_CLIENT_SECRET
@@ -120,6 +119,8 @@ export async function GET(req: Request) {
       code,
       redirect_uri: redirectUri,
     })
+
+    console.log("[v0] Token exchange using redirect URI:", redirectUri)
 
     const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
       method: "POST",
