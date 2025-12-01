@@ -8,6 +8,13 @@ const protectedRoutes = ["/dashboard", "/profile", "/settings"]
 const authRoutes = ["/login"]
 
 export async function middleware(request: NextRequest) {
+  const hostname = request.headers.get("host") || ""
+  if (hostname.includes("rotraders.net")) {
+    const url = request.nextUrl.clone()
+    url.host = hostname.replace("rotraders.net", "rotraders.gg")
+    return NextResponse.redirect(url, 301)
+  }
+
   const sessionCookie = request.cookies.get("trade_session_id")
   const hasSession = !!sessionCookie?.value
   const { pathname } = request.nextUrl
