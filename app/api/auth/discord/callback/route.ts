@@ -83,6 +83,7 @@ export async function GET(req: Request) {
   )
 
   if (error) {
+    console.log("[v0] OAuth error from Discord:", error)
     return Response.redirect(`${baseUrl}/login?error=oauth_denied`, 302)
   }
 
@@ -108,6 +109,7 @@ export async function GET(req: Request) {
   const clientSecret = process.env.DISCORD_CLIENT_SECRET
 
   if (!clientId || !clientSecret) {
+    console.error("[v0] Missing Discord credentials - clientId:", !!clientId, "clientSecret:", !!clientSecret)
     return Response.redirect(`${baseUrl}/login?error=config_error`, 302)
   }
 
@@ -120,7 +122,7 @@ export async function GET(req: Request) {
       redirect_uri: redirectUri,
     })
 
-    console.log("[v0] Token exchange using redirect URI:", redirectUri)
+    console.log("[v0] Token exchange attempt - redirect_uri:", redirectUri, "code length:", code.length)
 
     const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
       method: "POST",
@@ -130,9 +132,17 @@ export async function GET(req: Request) {
 
     if (!tokenRes.ok) {
       const errText = await tokenRes.text()
-      console.error("Discord OAuth token exchange failed:", tokenRes.status, errText)
+      console.error("[v0] Discord token exchange FAILED:", {
+        status: tokenRes.status,
+        statusText: tokenRes.statusText,
+        body: errText,
+        redirectUri,
+        codeLength: code.length,
+      })
       return Response.redirect(`${baseUrl}/login?error=token_exchange_failed`, 302)
     }
+
+    console.log("[v0] Token exchange successful!")
 
     const tokenJson = (await tokenRes.json()) as TokenResponse
 
