@@ -5,6 +5,20 @@ import { cookies } from "next/headers"
 import { upsertProfile } from "@/lib/db/queries/profiles"
 import { createSession as createDbSession } from "@/lib/db/queries/sessions"
 import { query } from "@/lib/db/postgres"
+import { appendFileSync } from "fs"
+
+function debugLog(message: string, data?: any) {
+  const timestamp = new Date().toISOString()
+  const logMessage = data ? `[${timestamp}] ${message} ${JSON.stringify(data)}\n` : `[${timestamp}] ${message}\n`
+
+  console.log(logMessage.trim())
+
+  try {
+    appendFileSync("/tmp/discord-oauth-debug.log", logMessage)
+  } catch (e) {
+    // Ignore file write errors
+  }
+}
 
 type TokenResponse = {
   access_token: string
@@ -27,7 +41,7 @@ async function addUserToGuild(userId: string, accessToken: string): Promise<bool
   const botToken = process.env.DISCORD_BOT_TOKEN
 
   if (!guildId || !botToken) {
-    console.log("[v0] Skipping guild join - DISCORD_GUILD_ID or DISCORD_BOT_TOKEN not configured")
+    debugLog("[v0] Skipping guild join - DISCORD_GUILD_ID or DISCORD_BOT_TOKEN not configured")
     return false
   }
 
@@ -44,23 +58,25 @@ async function addUserToGuild(userId: string, accessToken: string): Promise<bool
     })
 
     if (response.ok || response.status === 204) {
-      console.log("[v0] Successfully added user to guild:", userId)
+      debugLog("[v0] Successfully added user to guild:", userId)
       return true
     } else if (response.status === 201) {
-      console.log("[v0] User was already in guild:", userId)
+      debugLog("[v0] User was already in guild:", userId)
       return true
     } else {
       const errorText = await response.text()
-      console.error("[v0] Failed to add user to guild:", response.status, errorText)
+      debugLog("[v0] Failed to add user to guild:", response.status, errorText)
       return false
     }
   } catch (error: any) {
-    console.error("[v0] Error adding user to guild:", error.message)
+    debugLog("[v0] Error adding user to guild:", error.message)
     return false
   }
 }
 
 export async function GET(req: Request) {
+  debugLog("========== DISCORD CALLBACK STARTED ==========")
+
   const url = new URL(req.url)
   const code = url.searchParams.get("code")
   const state = url.searchParams.get("state")
@@ -71,33 +87,22 @@ export async function GET(req: Request) {
   const USE_SECURE_COOKIES = true
   const baseUrl = "https://rotraders.gg"
 
-  console.log(
-    "[v0] Callback received - code:",
-    !!code,
-    "state:",
+  debugLog("Callback params:", {
+    hasCode: !!code,
+    codeLength: code?.length,
     state,
-    "storedState:",
     storedState,
-    "match:",
-    state === storedState,
-  )
+    stateMatch: state === storedState,
+    error,
+  })
 
   if (error) {
-    console.log("[v0] OAuth error from Discord:", error)
+    debugLog("OAuth error from Discord:", error)
     return Response.redirect(`${baseUrl}/login?error=oauth_denied`, 302)
   }
 
   if (!code || !state || !storedState || state !== storedState) {
-    console.log(
-      "[v0] State validation failed - code:",
-      !!code,
-      "state:",
-      !!state,
-      "storedState:",
-      !!storedState,
-      "match:",
-      state === storedState,
-    )
+    debugLog("State validation FAILED")
     return Response.redirect(`${baseUrl}/login?error=invalid_state`, 302)
   }
 
@@ -108,8 +113,15 @@ export async function GET(req: Request) {
   const clientId = process.env.DISCORD_CLIENT_ID
   const clientSecret = process.env.DISCORD_CLIENT_SECRET
 
+  debugLog("Environment check:", {
+    hasClientId: !!clientId,
+    clientIdLength: clientId?.length,
+    hasClientSecret: !!clientSecret,
+    clientSecretLength: clientSecret?.length,
+  })
+
   if (!clientId || !clientSecret) {
-    console.error("[v0] Missing Discord credentials - clientId:", !!clientId, "clientSecret:", !!clientSecret)
+    debugLog("ERROR: Missing Discord credentials")
     return Response.redirect(`${baseUrl}/login?error=config_error`, 302)
   }
 
@@ -122,7 +134,7 @@ export async function GET(req: Request) {
       redirect_uri: redirectUri,
     })
 
-    console.log("[v0] Token exchange attempt - redirect_uri:", redirectUri, "code length:", code.length)
+    debugLog("Attempting token exchange with Discord API...", { redirectUri, codeLength: code.length })
 
     const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
       method: "POST",
@@ -130,22 +142,29 @@ export async function GET(req: Request) {
       body,
     })
 
+    debugLog("Token exchange response:", {
+      status: tokenRes.status,
+      statusText: tokenRes.statusText,
+      ok: tokenRes.ok,
+    })
+
     if (!tokenRes.ok) {
       const errText = await tokenRes.text()
-      console.error("[v0] Discord token exchange FAILED:", {
+      debugLog("TOKEN EXCHANGE FAILED - Discord API Error:", {
         status: tokenRes.status,
         statusText: tokenRes.statusText,
-        body: errText,
+        errorBody: errText,
         redirectUri,
         codeLength: code.length,
       })
       return Response.redirect(`${baseUrl}/login?error=token_exchange_failed`, 302)
     }
 
-    console.log("[v0] Token exchange successful!")
+    debugLog("Token exchange SUCCESS!")
 
     const tokenJson = (await tokenRes.json()) as TokenResponse
 
+    debugLog("Fetching Discord user info...")
     const userRes = await fetch("https://discord.com/api/users/@me", {
       headers: { Authorization: `Bearer ${tokenJson.access_token}` },
       cache: "no-store",
@@ -153,11 +172,13 @@ export async function GET(req: Request) {
 
     if (!userRes.ok) {
       const errText = await userRes.text()
-      console.error("Failed to fetch Discord user:", userRes.status, errText)
+      debugLog("User fetch FAILED:", { status: userRes.status, error: errText })
       return Response.redirect(`${baseUrl}/login?error=user_fetch_failed`, 302)
     }
 
     const discordUser = (await userRes.json()) as DiscordUser
+    debugLog("Discord user fetched:", { id: discordUser.id, username: discordUser.username })
+
     const avatarUrl = discordUser.avatar
       ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png?size=256`
       : null
@@ -168,6 +189,8 @@ export async function GET(req: Request) {
     )
     const isNewUser = existingProfileResult.rows.length === 0
 
+    debugLog("Upserting profile...", { isNewUser })
+
     try {
       await upsertProfile({
         discord_id: discordUser.id,
@@ -177,7 +200,7 @@ export async function GET(req: Request) {
         email: discordUser.email ?? null,
       })
     } catch (error: any) {
-      console.error("Failed to upsert user profile:", error.message)
+      debugLog("Profile upsert FAILED:", error.message)
       return Response.redirect(`${baseUrl}/login?error=database_error`, 302)
     }
 
@@ -206,15 +229,15 @@ export async function GET(req: Request) {
         JSON.stringify({ via: "discord" }),
       ])
     } catch (error) {
-      console.error("Failed to log activity:", error)
+      debugLog("Activity log failed (non-critical):", error)
     }
 
-    console.log("[v0] Login successful for user:", discordUser.id, "isNewUser:", isNewUser)
+    debugLog("Login complete! Redirecting user...", { isNewUser })
 
     const redirectPath = isNewUser ? "/?welcome=true" : "/"
     return Response.redirect(`${baseUrl}${redirectPath}`, 302)
   } catch (error: any) {
-    console.error("OAuth callback error:", error.message)
+    debugLog("UNEXPECTED ERROR in callback:", { message: error.message, stack: error.stack })
     return Response.redirect(`${baseUrl}/login?error=unexpected_error`, 302)
   }
 }
